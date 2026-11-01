@@ -1,0 +1,18 @@
+# 个人数据：观看记录、自定义片单、TMDB Key 全在这里，绝对不要提交
+data/
+
+# 打包产物，可随时重新生成
+*.zip
+
+# 原始文档（生成漫威片库用的源文件）。想一起开源就把下面两行删掉
+Marvel.docx
+Marvel.xlsx
+
+# Office 打开文件时生成的锁文件
+~$*
+
+# 系统杂项
+Thumbs.db
+desktop.ini
+.DS_Store
+*.tmp

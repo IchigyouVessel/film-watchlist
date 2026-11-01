@@ -1,0 +1,1878 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>片单 · 追片工具</title>
+<style>
+  *{box-sizing:border-box}
+  :root{
+    --bg:#f2f2f7;--panel:#ffffff;--side:#fafafc;--text:#1d1d1f;--sub:#86868b;
+    --line:#e6e6eb;--accent:#0a84ff;--accent-soft:#e9f2ff;--chip:#eeeef3;
+    --rowhover:#f6f6fb;--done:#b8b8be;--shadow:0 12px 36px rgba(0,0,0,.08);
+    --ok:#34c759;--warn:#ff9f0a;
+  }
+  html[data-theme="dark"]{
+    --bg:#0e0e10;--panel:#1c1c1e;--side:#141416;--text:#f2f2f7;--sub:#98989d;
+    --line:#2c2c2e;--accent:#0a84ff;--accent-soft:#10243d;--chip:#2c2c2e;
+    --rowhover:#242427;--done:#5c5c61;--shadow:0 12px 36px rgba(0,0,0,.55);
+    --ok:#30d158;--warn:#ff9f0a;
+  }
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:inherit;cursor:pointer}
+  .app{display:flex;height:100vh;overflow:hidden;width:100%}
+
+  /* ---------- sidebar ---------- */
+  .sidebar{
+    width:252px;flex:0 0 252px;min-width:0;background:var(--side);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;padding:20px 12px 12px;
+  }
+  .brand{font-size:20px;font-weight:700;letter-spacing:.5px;padding:0 10px 4px}
+  .brand span{color:var(--accent)}
+  .group-label{font-size:11px;color:var(--sub);font-weight:600;padding:16px 10px 6px;letter-spacing:.6px}
+  .theme-list{list-style:none;margin:0;padding:0;overflow-y:auto;flex:1}
+  .theme-item{
+    display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:9px;
+    font-size:14px;color:var(--text);user-select:none;margin-bottom:2px;
+  }
+  .theme-item:hover{background:var(--chip)}
+  .theme-item.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .theme-item .tname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .theme-item .tcount{font-size:11px;color:var(--sub);font-variant-numeric:tabular-nums}
+  .theme-item.active .tcount{color:var(--accent);opacity:.8}
+  .theme-item .del{opacity:0;font-size:15px;color:var(--sub);border:0;background:none;padding:0 2px}
+  .theme-item:hover .del{opacity:1}
+  .side-actions{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--line)}
+  .side-btn{
+    display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:9px;border:0;
+    background:none;color:var(--text);font-size:13px;text-align:left;
+  }
+  .side-btn:hover{background:var(--chip)}
+  .side-btn .ico{width:18px;text-align:center;opacity:.75}
+  .storage{font-size:11px;color:var(--sub);padding:8px 10px 0;line-height:1.55;word-break:break-all}
+  .storage b{color:var(--ok);font-weight:600}
+
+  /* ---------- main ---------- */
+  .main{flex:1 1 0;min-width:0;display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+  .head{padding:22px 28px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .head-top{display:flex;align-items:flex-start;gap:16px}
+  .head h1{margin:0;font-size:26px;font-weight:700;letter-spacing:-.3px}
+  .head .sub{color:var(--sub);font-size:13px;margin-top:6px}
+  .progress{flex:1;max-width:320px;margin-top:8px}
+  .bar{height:7px;border-radius:99px;background:var(--chip);overflow:hidden}
+  .bar > i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#0a84ff,#5ac8fa);transition:width .35s ease}
+  .progress .ptext{font-size:12px;color:var(--sub);margin-top:6px;font-variant-numeric:tabular-nums}
+
+  .tools{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
+  .search{
+    flex:1 1 220px;min-width:140px;position:relative
+  }
+  .search input{
+    width:100%;padding:9px 12px 9px 34px;border-radius:10px;border:1px solid var(--line);
+    background:var(--bg);color:var(--text);font-size:13.5px;outline:none;
+  }
+  .search input:focus{border-color:var(--accent);background:var(--panel)}
+  .search .mag{position:absolute;left:11px;top:50%;transform:translateY(-50%);opacity:.45;font-size:13px}
+  select,.btn{
+    padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);
+    color:var(--text);font-size:13px;outline:none;
+  }
+  .btn:hover{background:var(--chip)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .chips{display:flex;background:var(--chip);border-radius:9px;padding:2px}
+  .chips button{
+    border:0;background:none;padding:6px 12px;border-radius:7px;font-size:12.5px;color:var(--sub);
+  }
+  .chips button.on{background:var(--panel);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+  /* ---------- 参数筛选 ---------- */
+  .filters{display:flex;gap:8px;align-items:center;margin-top:11px;flex-wrap:wrap}
+  .filters:empty{display:none}
+  .ms{position:relative}
+  .ms-btn{
+    padding:5px 11px;font-size:12.5px;border-radius:8px;border:1px solid var(--line);
+    background:var(--bg);color:var(--text);outline:none;white-space:nowrap;
+  }
+  .ms-btn:hover{border-color:var(--accent)}
+  .ms-btn.active{border-color:var(--accent);background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .ms-btn::after{content:"▾";font-size:9px;opacity:.6;margin-left:5px}
+  .ms-panel{
+    position:absolute;top:calc(100% + 6px);left:0;min-width:196px;max-height:280px;overflow-y:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    box-shadow:var(--shadow);padding:6px;z-index:60;
+  }
+  .ms-opt{display:flex;align-items:center;gap:9px;padding:7px 9px;border-radius:7px;cursor:pointer;font-size:12.5px}
+  .ms-opt:hover{background:var(--chip)}
+  .ms-opt input{accent-color:var(--accent);width:14px;height:14px;margin:0;cursor:pointer}
+  .ms-txt{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ms-n{color:var(--sub);font-size:11px;font-variant-numeric:tabular-nums}
+  .ms-foot{border-top:1px solid var(--line);margin-top:5px;padding-top:5px}
+  .ms-foot button{
+    width:100%;border:0;background:none;color:var(--accent);font-size:12px;
+    padding:6px;border-radius:7px;text-align:left;
+  }
+  .ms-foot button:hover{background:var(--accent-soft)}
+  .filters .fcount{font-size:11.5px;color:var(--sub);margin-left:auto;font-variant-numeric:tabular-nums}
+  .filters .fclear{border:0;background:none;color:var(--accent);font-size:12px;padding:4px 8px;border-radius:7px}
+  .filters .fclear:hover{background:var(--accent-soft)}
+
+  .list-wrap{flex:1 1 0;min-height:0;overflow:auto;padding:14px 28px 40px}
+  .offline{
+    background:#fff4e5;color:#8a5a00;font-size:12.5px;line-height:1.6;
+    padding:9px 28px;border-bottom:1px solid #ffe0b2;
+  }
+  .offline[hidden]{display:none}
+  .offline b{font-weight:700}
+  html[data-theme="dark"] .offline{background:#3a2a10;color:#ffcf80;border-color:#4a3616}
+  .list{list-style:none;margin:0;padding:0}
+
+  /* ---------- rows ---------- */
+  .row{
+    display:flex;gap:12px;align-items:flex-start;padding:11px 12px;border-radius:11px;
+    border:1px solid transparent;cursor:pointer;transition:background .12s;
+  }
+  .row:hover{background:var(--panel);border-color:var(--line)}
+  .check{
+    flex:0 0 21px;width:21px;height:21px;border-radius:50%;border:1.7px solid var(--done);
+    background:transparent;margin-top:2px;display:flex;align-items:center;justify-content:center;
+    transition:all .15s;padding:0;
+  }
+  .row:hover .check{border-color:var(--accent)}
+  .row.done .check{background:var(--accent);border-color:var(--accent)}
+  .row.done .check::after{
+    content:"";width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;
+    transform:rotate(45deg) translate(-1px,-1px);
+  }
+  .info{flex:1;min-width:0}
+  .line1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .title{font-size:14.5px;font-weight:500}
+  .row.done .title{color:var(--done);text-decoration:line-through;text-decoration-thickness:1px}
+  .row.done .note,.row.done .date{opacity:.55}
+  .tag{font-size:10.5px;padding:2px 6px;border-radius:5px;background:var(--chip);color:var(--sub);white-space:nowrap}
+  .tag.soon{background:var(--accent-soft);color:var(--accent)}
+  .tag.seen{background:var(--chip);color:var(--sub)}
+  .date{margin-left:auto;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .note{font-size:12px;color:var(--sub);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .empty{color:var(--sub);text-align:center;padding:60px 20px;font-size:14px;line-height:1.9}
+
+  /* ---------- modal ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.32);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50}
+  .overlay[hidden]{display:none}
+  .modal{
+    background:var(--panel);border-radius:16px;box-shadow:var(--shadow);width:100%;max-width:620px;
+    max-height:82vh;display:flex;flex-direction:column;overflow:hidden;
+  }
+  .modal-head{display:flex;align-items:center;gap:12px;padding:18px 20px 12px;border-bottom:1px solid var(--line)}
+  .modal-head h2{margin:0;font-size:17px;font-weight:700}
+  .modal-head .x{margin-left:auto;border:0;background:none;font-size:20px;color:var(--sub);line-height:1}
+  .modal-body{padding:16px 20px 20px;overflow-y:auto}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:12px;color:var(--sub);margin-bottom:6px;font-weight:600}
+  .field input,.field textarea{
+    width:100%;padding:9px 11px;border-radius:9px;border:1px solid var(--line);
+    background:var(--bg);color:var(--text);font-size:13.5px;font-family:inherit;outline:none;
+  }
+  .field input:focus,.field textarea:focus{border-color:var(--accent)}
+  .field textarea{min-height:74px;resize:vertical}
+  .name-row{display:flex;gap:8px}
+  .name-row input{flex:1;min-width:0}
+  .name-row .btn{white-space:nowrap}
+  .divider{
+    display:flex;align-items:center;gap:10px;margin:18px 0 14px;
+    font-size:11.5px;color:var(--sub);letter-spacing:.5px;
+  }
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
+  .row-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+  .hint{font-size:11.5px;color:var(--sub);line-height:1.65;margin-top:8px}
+  .result{max-height:46vh;overflow-y:auto;margin-top:6px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:2px 0}
+  .result h4{font-size:11px;color:var(--sub);margin:14px 0 6px;letter-spacing:.5px;font-weight:700}
+  .hit{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px}
+  .hit:hover{background:var(--chip)}
+  .hit .hi{flex:1;min-width:0}
+  .hit .ht{font-size:13.5px}
+  .hit .hs{font-size:11.5px;color:var(--sub);margin-top:2px}
+  .hit button{padding:5px 10px;font-size:12px;border-radius:8px}
+  .log{font-size:12px;color:var(--sub);margin-top:10px;line-height:1.7;white-space:pre-wrap}
+  .kbd{font-size:11px;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 4px;color:var(--sub)}
+
+  /* ---------- 搜索框的系列片联想 ---------- */
+  .suggest{
+    position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:70;
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;
+    box-shadow:var(--shadow);padding:6px;max-height:330px;overflow-y:auto;
+  }
+  .suggest[hidden]{display:none}
+  .sug-head{font-size:10.5px;color:var(--sub);font-weight:700;letter-spacing:.6px;padding:6px 9px 4px}
+  .sug-row{display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;cursor:pointer}
+  .sug-row:hover,.sug-row.active{background:var(--chip)}
+  .sug-name{font-size:13.5px;white-space:nowrap}
+  .sug-meta{font-size:11.5px;color:var(--sub);white-space:nowrap}
+  .sug-state{margin-left:auto;font-size:11px;color:var(--sub);white-space:nowrap}
+  .sug-state.add{color:var(--accent);font-weight:600}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">片单<span>·</span></div>
+    <div class="group-label">我的片单</div>
+    <ul class="theme-list" id="themeList"></ul>
+    <div class="side-actions">
+      <button class="side-btn" id="btnAddTheme"><span class="ico">＋</span>新建片单</button>
+      <button class="side-btn" id="btnSettings"><span class="ico">⚙</span>设置与备份</button>
+      <div class="storage" id="storageInfo">数据：读取中…</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="head">
+      <div class="head-top">
+        <div>
+          <h1 id="themeTitle">—</h1>
+          <div class="sub" id="themeSub"></div>
+        </div>
+        <div class="progress">
+          <div class="bar"><i id="barFill" style="width:0%"></i></div>
+          <div class="ptext" id="progressText">0 / 0</div>
+        </div>
+      </div>
+      <div class="tools">
+        <div class="search">
+          <span class="mag">⌕</span>
+          <input id="q" type="search" placeholder="搜索片名、备注、出品；输入系列名可直接切换（如 007）" autocomplete="off">
+          <div class="suggest" id="suggest" hidden></div>
+        </div>
+        <select id="sort">
+          <option value="date-asc">上映时间 · 早→晚</option>
+          <option value="date-desc">上映时间 · 晚→早</option>
+          <option value="title">片名</option>
+          <option value="unseen">未看优先</option>
+        </select>
+        <div class="chips" id="chips">
+          <button data-f="all" class="on">全部</button>
+          <button data-f="unseen">未看</button>
+          <button data-f="seen">已看</button>
+        </div>
+        <button class="btn primary" id="btnUpdate">更新</button>
+      </div>
+      <div class="filters" id="filters"></div>
+    </header>
+
+    <div class="offline" id="offlineBanner" hidden>
+      没连上本地服务：现在点「已看」只存在浏览器里，<b>不会写进 data/</b>。
+      双击「启动片单.bat」后刷新页面即可恢复。
+    </div>
+
+    <div class="list-wrap">
+      <ul class="list" id="list"></ul>
+    </div>
+  </main>
+</div>
+
+<div class="overlay" id="overlay" hidden><div class="modal" id="modal"></div></div>
+
+<script>
+/* ============================================================
+   片库（内置系列片）。漫威数据由 Marvel.xlsx 生成后注入。
+   item: t 片名 / d 上映日期 ISO / ds 展示日期 / v 版本 / s 出品 / n 备注
+   ============================================================ */
+const SERIES_LIB = {
+  bond: {
+    name: "007 系列",
+    items: [
+      {t:"007之诺博士", d:"1962-10-05", v:"电影", s:"Eon", n:"肖恩·康纳利"},
+      {t:"007之俄罗斯之恋", d:"1963-10-10", v:"电影", s:"Eon", n:"肖恩·康纳利"},
+      {t:"007之金手指", d:"1964-09-17", v:"电影", s:"Eon", n:"肖恩·康纳利"},
+      {t:"007之霹雳弹", d:"1965-12-29", v:"电影", s:"Eon", n:"肖恩·康纳利"},
+      {t:"007之雷霆谷", d:"1967-06-12", v:"电影", s:"Eon", n:"肖恩·康纳利"},
+      {t:"007之女王密使", d:"1969-12-18", v:"电影", s:"Eon", n:"乔治·拉赞贝"},
+      {t:"007之金刚钻", d:"1971-12-17", v:"电影", s:"Eon", n:"肖恩·康纳利"},
+      {t:"007之生死关头", d:"1973-06-27", v:"电影", s:"Eon", n:"罗杰·摩尔"},
+      {t:"007之金枪人", d:"1974-12-19", v:"电影", s:"Eon", n:"罗杰·摩尔"},
+      {t:"007之海底城", d:"1977-07-07", v:"电影", s:"Eon", n:"罗杰·摩尔"},
+      {t:"007之太空城", d:"1979-06-26", v:"电影", s:"Eon", n:"罗杰·摩尔"},
+      {t:"007之最高机密", d:"1981-06-24", v:"电影", s:"Eon", n:"罗杰·摩尔"},
+      {t:"007之八爪女", d:"1983-06-06", v:"电影", s:"Eon", n:"罗杰·摩尔"},
+      {t:"007之雷霆杀机", d:"1985-05-22", v:"电影", s:"Eon", n:"罗杰·摩尔"},
+      {t:"007之黎明生机", d:"1987-06-29", v:"电影", s:"Eon", n:"提摩西·达顿"},
+      {t:"007之杀人执照", d:"1989-06-13", v:"电影", s:"Eon", n:"提摩西·达顿"},
+      {t:"007之黄金眼", d:"1995-11-17", v:"电影", s:"Eon", n:"皮尔斯·布鲁斯南"},
+      {t:"007之明日帝国", d:"1997-12-12", v:"电影", s:"Eon", n:"皮尔斯·布鲁斯南"},
+      {t:"007之黑日危机", d:"1999-11-19", v:"电影", s:"Eon", n:"皮尔斯·布鲁斯南"},
+      {t:"007之择日而亡", d:"2002-11-22", v:"电影", s:"Eon", n:"皮尔斯·布鲁斯南"},
+      {t:"007大战皇家赌场", d:"2006-11-16", v:"电影", s:"Eon", n:"丹尼尔·克雷格"},
+      {t:"007之大破量子危机", d:"2008-10-31", v:"电影", s:"Eon", n:"丹尼尔·克雷格"},
+      {t:"007之大破天幕杀机", d:"2012-10-26", v:"电影", s:"Eon", n:"丹尼尔·克雷格"},
+      {t:"007之幽灵党", d:"2015-10-26", v:"电影", s:"Eon", n:"丹尼尔·克雷格"},
+      {t:"007之无暇赴死", d:"2021-09-30", v:"电影", s:"Eon", n:"丹尼尔·克雷格"},
+      {t:"皇家赌场（1967 非正传）", d:"1967-04-13", v:"电影", s:"非 Eon", n:"彼得·塞勒斯 / 伍迪·艾伦"},
+      {t:"巡航导弹（1983 非正传）", d:"1983-10-07", v:"电影", s:"非 Eon", n:"肖恩·康纳利"},
+      {t:"邦德 26（未定档）", d:"", ds:"未定档", v:"电影", s:"Amazon MGM", n:"丹尼斯·维伦纽瓦执导，尚未公布主演"}
+    ]
+  },
+  starwars: {
+    name: "星球大战",
+    items: [
+      {t:"星球大战4：新希望", d:"1977-05-25", v:"电影", s:"卢卡斯影业", n:"天行者传奇"},
+      {t:"星球大战5：帝国反击战", d:"1980-05-21", v:"电影", s:"卢卡斯影业", n:"天行者传奇"},
+      {t:"星球大战6：绝地归来", d:"1983-05-25", v:"电影", s:"卢卡斯影业", n:"天行者传奇"},
+      {t:"星球大战1：魅影危机", d:"1999-05-19", v:"电影", s:"卢卡斯影业", n:"前传"},
+      {t:"星球大战2：克隆人的进攻", d:"2002-05-16", v:"电影", s:"卢卡斯影业", n:"前传"},
+      {t:"星球大战3：西斯的复仇", d:"2005-05-19", v:"电影", s:"卢卡斯影业", n:"前传"},
+      {t:"星球大战7：原力觉醒", d:"2015-12-18", v:"电影", s:"卢卡斯影业", n:"后传"},
+      {t:"星球大战8：最后的绝地", d:"2017-12-15", v:"电影", s:"卢卡斯影业", n:"后传"},
+      {t:"星球大战9：天行者崛起", d:"2019-12-20", v:"电影", s:"卢卡斯影业", n:"后传"},
+      {t:"侠盗一号", d:"2016-12-16", v:"电影", s:"卢卡斯影业", n:"外传"},
+      {t:"游侠索罗", d:"2018-05-25", v:"电影", s:"卢卡斯影业", n:"外传"}
+    ]
+  },
+  harrypotter: {
+    name: "哈利·波特",
+    items: [
+      {t:"哈利·波特与魔法石", d:"2001-11-16", v:"电影", s:"华纳", n:""},
+      {t:"哈利·波特与密室", d:"2002-11-15", v:"电影", s:"华纳", n:""},
+      {t:"哈利·波特与阿兹卡班的囚徒", d:"2004-06-04", v:"电影", s:"华纳", n:""},
+      {t:"哈利·波特与火焰杯", d:"2005-11-18", v:"电影", s:"华纳", n:""},
+      {t:"哈利·波特与凤凰社", d:"2007-07-11", v:"电影", s:"华纳", n:""},
+      {t:"哈利·波特与混血王子", d:"2009-07-15", v:"电影", s:"华纳", n:""},
+      {t:"哈利·波特与死亡圣器（上）", d:"2010-11-19", v:"电影", s:"华纳", n:""},
+      {t:"哈利·波特与死亡圣器（下）", d:"2011-07-15", v:"电影", s:"华纳", n:""}
+    ]
+  },
+  fantasticbeasts: {
+    name: "神奇动物",
+    items: [
+      {t:"神奇动物在哪里", d:"2016-11-18", v:"电影", s:"华纳", n:"纽特·斯卡曼德"},
+      {t:"神奇动物：格林德沃之罪", d:"2018-11-16", v:"电影", s:"华纳", n:"纽特·斯卡曼德"},
+      {t:"神奇动物：邓布利多之谜", d:"2022-04-15", v:"电影", s:"华纳", n:"纽特·斯卡曼德"}
+    ]
+  },
+  fastfurious: {
+    name: "速度与激情",
+    items: [
+      {t:"速度与激情", d:"2001-06-22", v:"电影", s:"环球", n:""},
+      {t:"速度与激情2", d:"2003-06-06", v:"电影", s:"环球", n:""},
+      {t:"速度与激情3：东京漂移", d:"2006-06-16", v:"电影", s:"环球", n:""},
+      {t:"速度与激情4", d:"2009-04-03", v:"电影", s:"环球", n:""},
+      {t:"速度与激情5", d:"2011-04-29", v:"电影", s:"环球", n:""},
+      {t:"速度与激情6", d:"2013-05-24", v:"电影", s:"环球", n:""},
+      {t:"速度与激情7", d:"2015-04-03", v:"电影", s:"环球", n:""},
+      {t:"速度与激情8", d:"2017-04-14", v:"电影", s:"环球", n:""},
+      {t:"速度与激情：特别行动", d:"2019-08-02", v:"电影", s:"环球", n:"外传"},
+      {t:"速度与激情9", d:"2021-06-25", v:"电影", s:"环球", n:""},
+      {t:"速度与激情10", d:"2023-05-19", v:"电影", s:"环球", n:""}
+    ]
+  },
+  missionimpossible: {
+    name: "碟中谍",
+    items: [
+      {t:"碟中谍", d:"1996-05-22", v:"电影", s:"派拉蒙", n:"汤姆·克鲁斯"},
+      {t:"碟中谍2", d:"2000-05-24", v:"电影", s:"派拉蒙", n:"汤姆·克鲁斯"},
+      {t:"碟中谍3", d:"2006-05-05", v:"电影", s:"派拉蒙", n:"汤姆·克鲁斯"},
+      {t:"碟中谍4：幽灵协议", d:"2011-12-21", v:"电影", s:"派拉蒙", n:"汤姆·克鲁斯"},
+      {t:"碟中谍5：神秘国度", d:"2015-07-31", v:"电影", s:"派拉蒙", n:"汤姆·克鲁斯"},
+      {t:"碟中谍6：全面瓦解", d:"2018-07-27", v:"电影", s:"派拉蒙", n:"汤姆·克鲁斯"},
+      {t:"碟中谍7：致命清算（上）", d:"2023-07-12", v:"电影", s:"派拉蒙", n:"汤姆·克鲁斯"},
+      {t:"碟中谍8：最终清算", d:"2025-05-23", v:"电影", s:"派拉蒙", n:"汤姆·克鲁斯"}
+    ]
+  },
+  dceu: {
+    name: "DC 扩展宇宙",
+    items: [
+      {t:"超人：钢铁之躯", d:"2013-06-14", v:"电影", s:"华纳/DC", n:""},
+      {t:"蝙蝠侠大战超人", d:"2016-03-25", v:"电影", s:"华纳/DC", n:""},
+      {t:"自杀小队", d:"2016-08-05", v:"电影", s:"华纳/DC", n:""},
+      {t:"神奇女侠", d:"2017-06-02", v:"电影", s:"华纳/DC", n:"盖尔·加朵"},
+      {t:"正义联盟", d:"2017-11-17", v:"电影", s:"华纳/DC", n:""},
+      {t:"海王", d:"2018-12-21", v:"电影", s:"华纳/DC", n:""},
+      {t:"沙赞", d:"2019-04-05", v:"电影", s:"华纳/DC", n:""},
+      {t:"猛禽小队", d:"2020-02-07", v:"电影", s:"华纳/DC", n:""},
+      {t:"神奇女侠1984", d:"2020-12-25", v:"电影", s:"华纳/DC", n:"盖尔·加朵"},
+      {t:"扎克·施奈德版正义联盟", d:"2021-03-18", v:"电影", s:"华纳/DC", n:"导演剪辑版"},
+      {t:"自杀小队：全员集结", d:"2021-08-06", v:"电影", s:"华纳/DC", n:""},
+      {t:"黑亚当", d:"2022-10-21", v:"电影", s:"华纳/DC", n:""},
+      {t:"沙赞2：众神之怒", d:"2023-03-17", v:"电影", s:"华纳/DC", n:""},
+      {t:"闪电侠", d:"2023-06-16", v:"电影", s:"华纳/DC", n:""},
+      {t:"蓝甲虫", d:"2023-08-18", v:"电影", s:"华纳/DC", n:""},
+      {t:"海王2：失落的王国", d:"2023-12-22", v:"电影", s:"华纳/DC", n:""}
+    ]
+  }
+};
+
+const MARVEL_ITEMS = [{"t":"蜘蛛侠","d":"1977-09-14","ds":"1977年9月14日","v":"电视电影","s":"CBS","n":"CBS"},{"t":"奇异博士","d":"1978-09-06","ds":"1978年9月6日","v":"电视电影","s":"CBS","n":"CBS"},{"t":"美国队长","d":"1979-01-31","ds":"1979年1月31日","v":"电视电影","s":"CBS","n":"CBS"},{"t":"美国队长2：死亡太早","d":"1979-11-23","ds":"1979年11月23日","v":"电视电影","s":"CBS","n":"CBS"},{"t":"无敌浩克","d":"1988-05-22","ds":"1988年5月22日","v":"电视电影","s":"NBC","n":"NBC"},{"t":"惩罚者","d":"1989-10-05","ds":"1989年10月5日","v":"电影","s":"非MCU","n":"非MCU"},{"t":"美国队长","d":"1990-12-14","ds":"1990年12月14日","v":"电影","s":"非MCU","n":"非MCU"},{"t":"神奇四侠","d":"1994-01-01","ds":"1994年","v":"电影","s":"非MCU","n":"非MCU"},{"t":"X战警","d":"1992-10-31","ds":"1992年10月31日","v":"动画剧集","s":"Fox Kids","n":"Fox Kids"},{"t":"蜘蛛侠","d":"1994-11-19","ds":"1994年11月19日","v":"动画剧集","s":"Fox Kids","n":"Fox Kids"},{"t":"银影侠","d":"1998-02-07","ds":"1998年2月7日","v":"动画剧集","s":"Fox Kids","n":"Fox Kids"},{"t":"刀锋战士","d":"1998-08-21","ds":"1998年8月21日","v":"电影","s":"New Line","n":"New Line Cinema"},{"t":"X战警","d":"2000-07-14","ds":"2000年7月14日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"刀锋战士2","d":"2002-03-22","ds":"2002年3月22日","v":"电影","s":"","n":""},{"t":"蜘蛛侠","d":"2002-05-03","ds":"2002年5月3日","v":"电影","s":"索尼","n":"索尼，托比·马奎尔版"},{"t":"超胆侠","d":"2003-02-14","ds":"2003年2月14日","v":"电影","s":"非MCU","n":"非MCU"},{"t":"X战警2","d":"2003-05-02","ds":"2003年5月2日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"浩克","d":"2003-06-20","ds":"2003年6月20日","v":"电影","s":"非MCU","n":"非MCU"},{"t":"惩罚者","d":"2004-04-16","ds":"2004年4月16日","v":"电影","s":"非MCU","n":"非MCU"},{"t":"蜘蛛侠2","d":"2004-06-30","ds":"2004年6月30日","v":"电影","s":"索尼","n":"索尼，托比版"},{"t":"刀锋战士3","d":"2004-12-08","ds":"2004年12月8日","v":"电影","s":"","n":""},{"t":"艾丽卡","d":"2005-01-14","ds":"2005年1月14日","v":"电影","s":"非MCU","n":"非MCU"},{"t":"神奇四侠","d":"2005-07-08","ds":"2005年7月8日","v":"电影","s":"非MCU","n":"Fox，非MCU"},{"t":"X战警3：背水一战","d":"2006-05-26","ds":"2006年5月26日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"神奇四侠2：银影侠来袭","d":"2007-06-15","ds":"2007年6月15日","v":"电影","s":"Fox","n":"Fox"},{"t":"蜘蛛侠3","d":"2007-05-04","ds":"2007年5月4日","v":"电影","s":"索尼","n":"索尼，托比版"},{"t":"神奇四侠：世界最伟大的英雄","d":"2006-09-02","ds":"2006年9月2日","v":"动画剧集","s":"","n":""},{"t":"钢铁侠","d":"2008-05-02","ds":"2008年5月2日","v":"电影","s":"MCU","n":"MCU"},{"t":"无敌浩克","d":"2008-06-13","ds":"2008年6月13日","v":"电影","s":"MCU","n":"MCU"},{"t":"金刚狼","d":"2009-05-01","ds":"2009年5月1日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"钢铁侠2","d":"2010-05-07","ds":"2010年5月7日","v":"电影","s":"MCU","n":"MCU"},{"t":"雷神","d":"2011-05-06","ds":"2011年5月6日","v":"电影","s":"MCU","n":"MCU"},{"t":"X战警：第一战","d":"2011-06-03","ds":"2011年6月3日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"美国队长：复仇者先锋","d":"2011-07-22","ds":"2011年7月22日","v":"电影","s":"MCU","n":"MCU"},{"t":"漫威短片：神盾顾问","d":"2011-09-13","ds":"2011年9月13日","v":"短片","s":"MCU","n":"MCU短片"},{"t":"漫威短片：寻找雷神锤子路上发生的趣事","d":"2011-10-25","ds":"2011年10月25日","v":"短片","s":"MCU","n":"MCU短片"},{"t":"复仇者联盟","d":"2012-05-04","ds":"2012年5月4日","v":"电影","s":"MCU","n":"MCU"},{"t":"超凡蜘蛛侠","d":"2012-07-03","ds":"2012年7月3日","v":"电影","s":"索尼","n":"索尼，安德鲁·加菲尔德版"},{"t":"漫威短片：47号物品","d":"2012-09-25","ds":"2012年9月25日","v":"短片","s":"MCU","n":"MCU短片"},{"t":"钢铁侠3","d":"2013-05-03","ds":"2013年5月3日","v":"电影","s":"MCU","n":"MCU"},{"t":"金刚狼2","d":"2013-07-26","ds":"2013年7月26日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"漫威短片：探员卡特","d":"2013-09-03","ds":"2013年9月3日","v":"短片","s":"MCU","n":"MCU短片，数字版"},{"t":"神盾局特工 第1季","d":"2013-09-24","ds":"2013年9月24日首播","v":"电视剧","s":"MCU","n":"MCU剧集，ABC"},{"t":"雷神2：黑暗世界","d":"2013-11-08","ds":"2013年11月8日","v":"电影","s":"MCU","n":"MCU"},{"t":"美国队长2：冬日战士","d":"2014-04-04","ds":"2014年4月4日","v":"电影","s":"MCU","n":"MCU"},{"t":"超凡蜘蛛侠2","d":"2014-05-02","ds":"2014年5月2日","v":"电影","s":"索尼","n":"索尼，加菲尔德版"},{"t":"X战警：逆转未来","d":"2014-05-23","ds":"2014年5月23日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"银河护卫队","d":"2014-08-01","ds":"2014年8月1日","v":"电影","s":"MCU","n":"MCU"},{"t":"神盾局特工 第2季","d":"2014-09-23","ds":"2014年9月23日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"特工卡特 第1季","d":"2015-01-06","ds":"2015年1月6日首播","v":"电视剧","s":"MCU","n":"MCU，ABC"},{"t":"漫威短片：王者万岁","d":"2015-01-13","ds":"2015年1月13日","v":"短片","s":"MCU","n":"MCU短片，数字版"},{"t":"超胆侠 第1季","d":"2015-04-10","ds":"2015年4月10日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"复仇者联盟2：奥创纪元","d":"2015-05-01","ds":"2015年5月1日","v":"电影","s":"MCU","n":"MCU"},{"t":"蚁人","d":"2015-07-17","ds":"2015年7月17日","v":"电影","s":"MCU","n":"MCU"},{"t":"杰西卡·琼斯 第1季","d":"2015-11-20","ds":"2015年11月20日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"特工卡特 第2季","d":"2016-01-19","ds":"2016年1月19日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"死侍","d":"2016-02-12","ds":"2016年2月12日","v":"电影","s":"Fox","n":"Fox，死侍系列"},{"t":"超胆侠 第2季","d":"2016-03-18","ds":"2016年3月18日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"美国队长3：内战","d":"2016-05-06","ds":"2016年5月6日","v":"电影","s":"MCU","n":"MCU"},{"t":"X战警：天启","d":"2016-05-27","ds":"2016年5月27日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"卢克·凯奇 第1季","d":"2016-09-30","ds":"2016年9月30日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"神盾局特工 第3季","d":"2015-09-29","ds":"2015年9月29日–2016年5月17日","v":"电视剧","s":"MCU","n":"MCU"},{"t":"奇异博士","d":"2016-11-04","ds":"2016年11月4日","v":"电影","s":"MCU","n":"MCU"},{"t":"大群 第1季","d":"2017-02-08","ds":"2017年2月8日首播","v":"电视剧","s":"Fox X战警衍生剧","n":"Fox X战警衍生剧，FX"},{"t":"金刚狼3：殊死一战","d":"2017-03-03","ds":"2017年3月3日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"铁拳 第1季","d":"2017-03-17","ds":"2017年3月17日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"银河护卫队2","d":"2017-05-05","ds":"2017年5月5日","v":"电影","s":"MCU","n":"MCU"},{"t":"蜘蛛侠：英雄归来","d":"2017-07-07","ds":"2017年7月7日","v":"电影","s":"MCU","n":"MCU/索尼共享"},{"t":"捍卫者联盟","d":"2017-08-18","ds":"2017年8月18日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"异人族","d":"2017-09-29","ds":"2017年9月29日","v":"电视剧","s":"MCU","n":"MCU，IMAX影院先行，ABC剧集"},{"t":"天赋异禀 第1季","d":"2017-10-02","ds":"2017年10月2日首播","v":"电视剧","s":"Fox X战警衍生剧","n":"Fox X战警衍生剧，Fox"},{"t":"雷神3：诸神黄昏","d":"2017-11-03","ds":"2017年11月3日","v":"电影","s":"MCU","n":"MCU"},{"t":"惩罚者 第1季","d":"2017-11-17","ds":"2017年11月17日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"黑豹","d":"2018-02-16","ds":"2018年2月16日","v":"电影","s":"MCU","n":"MCU"},{"t":"杰西卡·琼斯 第2季","d":"2018-03-08","ds":"2018年3月8日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"复仇者联盟3：无限战争","d":"2018-04-27","ds":"2018年4月27日","v":"电影","s":"MCU","n":"MCU"},{"t":"死侍2","d":"2018-05-18","ds":"2018年5月18日","v":"电影","s":"Fox","n":"Fox，死侍系列"},{"t":"卢克·凯奇 第2季","d":"2018-06-22","ds":"2018年6月22日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"蚁人2：黄蜂女现身","d":"2018-07-06","ds":"2018年7月6日","v":"电影","s":"MCU","n":"MCU"},{"t":"铁拳 第2季","d":"2018-09-07","ds":"2018年9月7日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"毒液","d":"2018-10-05","ds":"2018年10月5日","v":"电影","s":"索尼SSU","n":"索尼蜘蛛侠宇宙 / SSU"},{"t":"超胆侠 第3季","d":"2018-10-19","ds":"2018年10月19日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"蜘蛛侠：平行宇宙","d":"2018-12-14","ds":"2018年12月14日","v":"动画电影","s":"索尼","n":"索尼动画，“蜘蛛宇宙”系列"},{"t":"惩罚者 第2季","d":"2019-01-18","ds":"2019年1月18日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"惊奇队长","d":"2019-03-08","ds":"2019年3月8日","v":"电影","s":"MCU","n":"MCU"},{"t":"复仇者联盟4：终局之战","d":"2019-04-26","ds":"2019年4月26日","v":"电影","s":"MCU","n":"MCU"},{"t":"神盾局特工 第6季","d":"2019-05-10","ds":"2019年5月10日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"X战警：黑凤凰","d":"2019-06-07","ds":"2019年6月7日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙"},{"t":"杰西卡·琼斯 第3季","d":"2019-06-14","ds":"2019年6月14日","v":"电视剧","s":"MCU","n":"MCU，Netflix"},{"t":"蜘蛛侠：英雄远征","d":"2019-07-02","ds":"2019年7月2日","v":"电影","s":"MCU","n":"MCU/索尼"},{"t":"大群 第3季（最终季）","d":"2019-06-24","ds":"2019年6月24日首播","v":"电视剧","s":"Fox X战警衍生剧","n":"Fox X战警衍生剧"},{"t":"新变种人","d":"2020-08-28","ds":"2020年8月28日","v":"电影","s":"Fox X战警宇宙","n":"Fox X战警宇宙，延期上映"},{"t":"旺达幻视","d":"2021-01-15","ds":"2021年1月15日首播","v":"电视剧","s":"MCU","n":"MCU，Disney+"},{"t":"猎鹰与冬兵","d":"2021-03-19","ds":"2021年3月19日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"洛基 第1季","d":"2021-06-09","ds":"2021年6月9日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"黑寡妇","d":"2021-07-09","ds":"2021年7月9日","v":"电影","s":"MCU","n":"MCU"},{"t":"假如…？ 第1季","d":"2021-08-11","ds":"2021年8月11日首播","v":"动画剧集","s":"MCU","n":"MCU动画"},{"t":"尚气与十环传奇","d":"2021-09-03","ds":"2021年9月3日","v":"电影","s":"MCU","n":"MCU"},{"t":"毒液2","d":"2021-10-01","ds":"2021年10月1日","v":"电影","s":"索尼SSU","n":"SSU"},{"t":"永恒族","d":"2021-11-05","ds":"2021年11月5日","v":"电影","s":"MCU","n":"MCU"},{"t":"鹰眼","d":"2021-11-24","ds":"2021年11月24日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"蜘蛛侠：英雄无归","d":"2021-12-17","ds":"2021年12月17日","v":"电影","s":"MCU","n":"MCU/索尼"},{"t":"月光骑士","d":"2022-03-30","ds":"2022年3月30日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"莫比亚斯","d":"2022-04-01","ds":"2022年4月1日","v":"电影","s":"索尼SSU","n":"SSU"},{"t":"奇异博士2：疯狂多元宇宙","d":"2022-05-06","ds":"2022年5月6日","v":"电影","s":"MCU","n":"MCU"},{"t":"惊奇少女","d":"2022-06-08","ds":"2022年6月8日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"雷神4：爱与雷霆","d":"2022-07-08","ds":"2022年7月8日","v":"电影","s":"MCU","n":"MCU"},{"t":"女浩克：律师","d":"2022-08-18","ds":"2022年8月18日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"暗夜狼人","d":"2022-10-07","ds":"2022年10月7日","v":"特别篇","s":"MCU","n":"MCU"},{"t":"黑豹2：瓦坎达万岁","d":"2022-11-11","ds":"2022年11月11日","v":"电影","s":"MCU","n":"MCU"},{"t":"银河护卫队：假日特别篇","d":"2022-11-25","ds":"2022年11月25日","v":"特别篇","s":"MCU","n":"MCU"},{"t":"蚁人与黄蜂女：量子狂潮","d":"2023-02-17","ds":"2023年2月17日","v":"电影","s":"MCU","n":"MCU"},{"t":"银河护卫队3","d":"2023-05-05","ds":"2023年5月5日","v":"电影","s":"MCU","n":"MCU"},{"t":"蜘蛛侠：纵横宇宙","d":"2023-06-02","ds":"2023年6月2日","v":"动画电影","s":"索尼","n":"索尼动画，“蜘蛛宇宙”系列"},{"t":"秘密入侵","d":"2023-06-21","ds":"2023年6月21日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"洛基 第2季","d":"2023-10-05","ds":"2023年10月5日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"惊奇队长2","d":"2023-11-10","ds":"2023年11月10日","v":"电影","s":"MCU","n":"MCU"},{"t":"回声","d":"2024-01-09","ds":"2024年1月9日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"蜘蛛夫人：超感觉醒","d":"2024-02-14","ds":"2024年2月14日","v":"电影","s":"索尼SSU","n":"SSU"},{"t":"X战警97","d":"2024-03-20","ds":"2024年3月20日首播","v":"动画剧集","s":"漫威动画","n":"漫威动画，接续90年代X战警动画"},{"t":"死侍与金刚狼","d":"2024-07-26","ds":"2024年7月26日","v":"电影","s":"MCU","n":"MCU，整合Fox X战警宇宙"},{"t":"女巫阿加莎","d":"2024-09-18","ds":"2024年9月18日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"毒液：最后一舞","d":"2024-10-25","ds":"2024年10月25日","v":"电影","s":"索尼SSU","n":"SSU"},{"t":"猎人克莱文","d":"2024-12-13","ds":"2024年12月13日","v":"电影","s":"索尼SSU","n":"SSU"},{"t":"你的友好邻居蜘蛛侠 第1季","d":"2025-01-25","ds":"2025年1月25日首播","v":"动画剧集","s":"MCU","n":"MCU动画"},{"t":"美国队长4：美丽新世界","d":"2025-02-14","ds":"2025年2月14日","v":"电影","s":"MCU","n":"MCU"},{"t":"夜魔侠：重生 第1季","d":"2025-03-05","ds":"2025年3月5日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"雷霆特攻队","d":"2025-05-02","ds":"2025年5月2日","v":"电影","s":"MCU","n":"MCU"},{"t":"神奇4侠：初露锋芒","d":"2025-07-25","ds":"2025年7月25日","v":"电影","s":"MCU","n":"MCU"},{"t":"瓦坎达之眼","d":"2025-08-06","ds":"2025年8月6日首播","v":"动画剧集","s":"MCU","n":"MCU"},{"t":"钢铁心","d":"2025-09-03","ds":"2025年9月3日首播","v":"电视剧","s":"MCU","n":"MCU"},{"t":"丧尸英雄","d":"2025-10-01","ds":"2025年10月","v":"动画剧集","s":"MCU","n":"MCU"},{"t":"神力人","d":"2025-12-01","ds":"2025年12月","v":"电视剧","s":"MCU","n":"MCU"},{"t":"蜘蛛侠：崭新之日","d":"2026-07-31","ds":"2026年7月31日","v":"电影","s":"MCU","n":"MCU/索尼"},{"t":"复仇者联盟5：毁灭之日","d":"2026-12-18","ds":"2026年12月18日","v":"电影","s":"MCU","n":"MCU"},{"t":"蜘蛛侠：超越宇宙","d":"2027-06-18","ds":"2027年6月18日","v":"动画电影","s":"索尼","n":"索尼动画，“蜘蛛宇宙”系列"},{"t":"复仇者联盟6：秘密战争","d":"2027-12-17","ds":"2027年12月17日","v":"电影","s":"MCU","n":"MCU"}];
+
+const CATALOG = Object.assign(
+  { marvel: { name: "漫威影视宇宙", items: MARVEL_ITEMS } },
+  SERIES_LIB
+);
+
+/* ============================================================ state */
+/* 数据默认存到 data/state.json（由 server.py 提供）。
+   直接双击 html 打不开服务时，自动退回浏览器本地存储。 */
+const KEY = "pian.v1";
+const API = location.protocol === "file:" ? "http://127.0.0.1:8765" : "";
+const DEFAULT_STATE = {
+  themes: [{ id: "marvel" }, { id: "bond" }],
+  cur: "marvel",
+  watched: {},
+  extra: {},
+  settings: { dark: false, tmdbKey: "" },
+  // 界面状态：重开页面后沿用上次的筛选 / 排序 / 已看筛选
+  ui: {
+    filters: { v: [], s: [], dec: [], rel: [] },
+    sort: "date-asc",
+    chip: "all",
+  },
+};
+
+let state = structuredClone(DEFAULT_STATE);
+let storageMode = "local";     // "disk" = data/state.json，"local" = 浏览器
+let saveTimer = null;
+
+function normalize(s) {
+  const base = Object.assign(structuredClone(DEFAULT_STATE), s || {});
+  base.settings = Object.assign({}, DEFAULT_STATE.settings, (s && s.settings) || {});
+  base.watched = base.watched || {};
+  base.extra = base.extra || {};
+
+  const ui = Object.assign({}, DEFAULT_STATE.ui, (s && s.ui) || {});
+  const f = Object.assign({}, DEFAULT_STATE.ui.filters, ui.filters || {});
+  ["v", "s", "dec", "rel"].forEach((k) => {
+    if (!Array.isArray(f[k])) f[k] = [];
+  });
+  base.ui = {
+    filters: f,
+    sort: typeof ui.sort === "string" && ui.sort ? ui.sort : "date-asc",
+    chip: ["all", "unseen", "seen"].indexOf(ui.chip) >= 0 ? ui.chip : "all",
+  };
+
+  if (!Array.isArray(base.themes) || !base.themes.length) {
+    base.themes = structuredClone(DEFAULT_STATE.themes);
+  }
+  if (!base.themes.some((t) => t.id === base.cur)) base.cur = base.themes[0].id;
+  return base;
+}
+
+function readLocal() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+async function bootState() {
+  try {
+    const r = await fetch(API + "/api/state", { cache: "no-store" });
+    if (r.ok) {
+      const j = await r.json();
+      if (j && j.ok) {
+        storageMode = "disk";
+        if (j.state && j.state.themes) {
+          state = normalize(j.state);
+        } else {
+          // data/ 里还没有数据：把浏览器里的旧数据迁过去
+          state = normalize(readLocal() || structuredClone(DEFAULT_STATE));
+          await saveState(true);
+        }
+        return;
+      }
+    }
+  } catch (e) {
+    /* 服务没启动，走浏览器存储 */
+  }
+  storageMode = "local";
+  state = normalize(readLocal() || structuredClone(DEFAULT_STATE));
+}
+
+/* 把当前界面选择写进 state，随数据一起存盘 */
+let uiReady = false;
+function syncUiToState() {
+  if (!uiReady) return;            // 界面还没还原完，别拿默认值覆盖存档
+  const sortEl = $("#sort");
+  if (!sortEl) return;
+  const chipEl = document.querySelector("#chips button.on");
+  state.ui = {
+    filters: {
+      v: [...filters.v],
+      s: [...filters.s],
+      dec: [...filters.dec],
+      rel: [...filters.rel],
+    },
+    sort: sortEl.value,
+    chip: chipEl ? chipEl.dataset.f : "all",
+  };
+}
+
+function saveState(immediate) {
+  syncUiToState();
+  try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { /* 忽略 */ }
+  if (storageMode !== "disk") return Promise.resolve();
+
+  const push = () => fetch(API + "/api/state", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(state, null, 2),
+  }).catch((e) => console.warn("写入 data/state.json 失败", e));
+
+  clearTimeout(saveTimer);
+  if (immediate) return push();
+  saveTimer = setTimeout(push, 300);
+  return Promise.resolve();
+}
+
+function save() { saveState(false); }
+
+/* 关页面时把还没写出去的改动补写一次，避免防抖窗口内丢数据 */
+window.addEventListener("pagehide", () => {
+  if (storageMode !== "disk") return;
+  try {
+    fetch(API + "/api/state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state, null, 2),
+      keepalive: true,
+    });
+  } catch (e) { /* 忽略 */ }
+});
+
+/* ============================================================ helpers */
+const $ = (sel) => document.querySelector(sel);
+const keyOf = (it) => it.t + "|" + (it.d || "");
+const wkey = (themeId, it) => themeId + "::" + keyOf(it);
+const isWatched = (themeId, it) => !!state.watched[wkey(themeId, it)];
+const todayISO = () => new Date().toISOString().slice(0, 10);
+function fmt(it) {
+  if (it.ds) return it.ds;
+  if (!it.d) return "未定档";
+  const [y, m, d] = it.d.split("-");
+  return y + "年" + Number(m) + "月" + Number(d) + "日";
+}
+
+function themeName(id) {
+  const th = state.themes.find((t) => t.id === id);
+  if (th && th.name) return th.name;
+  return CATALOG[id]?.name || "未命名片单";
+}
+function itemsOf(id) {
+  const base = CATALOG[id]?.items || [];
+  const extra = state.extra[id] || [];
+  const seen = new Set(base.map(keyOf));
+  return base.concat(extra.filter((x) => !seen.has(keyOf(x))));
+}
+function watchedCount(id) {
+  return itemsOf(id).filter((it) => isWatched(id, it)).length;
+}
+
+/* ============================================================ render */
+function renderThemes() {
+  const ul = $("#themeList");
+  ul.textContent = "";
+  state.themes.forEach((th) => {
+    const li = document.createElement("li");
+    li.className = "theme-item" + (th.id === state.cur ? " active" : "");
+    const nm = document.createElement("span");
+    nm.className = "tname";
+    nm.textContent = themeName(th.id);
+    const ct = document.createElement("span");
+    ct.className = "tcount";
+    ct.textContent = watchedCount(th.id) + "/" + itemsOf(th.id).length;
+    li.append(nm, ct);
+
+    if (state.themes.length > 1) {
+      const del = document.createElement("button");
+      del.className = "del";
+      del.textContent = "×";
+      del.title = "从我的片单移除";
+      del.onclick = (e) => {
+        e.stopPropagation();
+        if (!confirm("从我的片单里移除「" + themeName(th.id) + "」？\n（已看记录会一起删除）")) return;
+        state.themes = state.themes.filter((x) => x.id !== th.id);
+        delete state.extra[th.id];
+        Object.keys(state.watched).forEach((k) => {
+          if (k.startsWith(th.id + "::")) delete state.watched[k];
+        });
+        if (state.cur === th.id) state.cur = state.themes[0].id;
+        save(); renderAll();
+      };
+      li.append(del);
+    }
+
+    li.onclick = () => { state.cur = th.id; save(); renderAll(); };
+    li.oncontextmenu = (e) => { e.preventDefault(); openRename(th.id); };
+    ul.append(li);
+  });
+}
+
+/* ---------- 参数筛选：多选，按当前片单里真实存在的字段生成 ---------- */
+let filters = { v: [], s: [], dec: [], rel: [] };
+let openMsKey = null;   // 当前展开的下拉
+
+const FILTER_FIELDS = [
+  { key: "v", label: "版本", of: (it) => it.v || "" },
+  { key: "s", label: "出品", of: (it) => it.s || "" },
+  { key: "dec", label: "年代", of: (it) => decadeOf(it) },
+  { key: "rel", label: "上映", of: (it) => releaseState(it) },
+];
+
+function decadeOf(it) {
+  const y = parseInt((it.d || "").slice(0, 4), 10);
+  return y ? Math.floor(y / 10) * 10 + "s" : "";
+}
+
+function releaseState(it) {
+  if (!it.d) return "unknown";
+  return it.d > todayISO() ? "soon" : "out";
+}
+
+function filterLabel(key, value) {
+  if (key === "rel") return { out: "已上映", soon: "未上映", unknown: "未定档" }[value] || value;
+  if (value === "") return "未标注";
+  return value;
+}
+
+function clearFilters() {
+  filters = { v: [], s: [], dec: [], rel: [] };
+  openMsKey = null;
+}
+
+/* 把上次存下来的筛选 / 排序 / 已看筛选还原到界面上 */
+function applyUiState() {
+  const ui = state.ui || DEFAULT_STATE.ui;
+  const f = ui.filters || {};
+  filters = {
+    v: [...(f.v || [])],
+    s: [...(f.s || [])],
+    dec: [...(f.dec || [])],
+    rel: [...(f.rel || [])],
+  };
+  const sortEl = $("#sort");
+  if (sortEl) sortEl.value = ui.sort || "date-asc";
+  const chip = ui.chip || "all";
+  document.querySelectorAll("#chips button").forEach((b) => {
+    b.classList.toggle("on", b.dataset.f === chip);
+  });
+  uiReady = true;
+}
+
+function activeFilterCount() {
+  return FILTER_FIELDS.reduce((n, f) => n + (filters[f.key] ? filters[f.key].length : 0), 0);
+}
+
+function closeMsPanels() {
+  document.querySelectorAll(".ms-panel").forEach((p) => p.remove());
+  openMsKey = null;
+}
+
+function buildFilters() {
+  const box = $("#filters");
+  box.textContent = "";
+  closeMsPanels();
+
+  const all = itemsOf(state.cur);
+
+  FILTER_FIELDS.forEach((f) => {
+    const counts = new Map();
+    all.forEach((it) => {
+      const k = f.of(it);
+      counts.set(k, (counts.get(k) || 0) + 1);
+    });
+
+    // 丢掉已经不存在的选中值；只有一种取值的字段没有筛选意义
+    filters[f.key] = (filters[f.key] || []).filter((k) => counts.has(k));
+    if (counts.size < 2) {
+      filters[f.key] = [];
+      return;
+    }
+
+    const wrap = document.createElement("div");
+    wrap.className = "ms";
+
+    const btn = document.createElement("button");
+    btn.className = "ms-btn";
+    const renderBtn = () => {
+      const sel = filters[f.key];
+      if (!sel.length) {
+        btn.textContent = f.label + "：全部";
+        btn.classList.remove("active");
+      } else if (sel.length === 1) {
+        btn.textContent = f.label + "：" + filterLabel(f.key, sel[0]);
+        btn.classList.add("active");
+      } else {
+        btn.textContent = f.label + "：" + filterLabel(f.key, sel[0]) + " +" + (sel.length - 1);
+        btn.classList.add("active");
+      }
+    };
+    renderBtn();
+
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      if (openMsKey === f.key) { closeMsPanels(); return; }
+      closeMsPanels();
+      openMsKey = f.key;
+      wrap.append(buildPanel(f, counts, renderBtn));
+      btn.classList.add("open");
+    };
+
+    wrap.append(btn);
+    box.append(wrap);
+  });
+
+  if (activeFilterCount() > 0) {
+    const clr = document.createElement("button");
+    clr.className = "fclear";
+    clr.textContent = "清除筛选";
+    clr.onclick = () => {
+      clearFilters();
+      save();
+      renderAll();
+    };
+    box.append(clr);
+  }
+
+  const cnt = document.createElement("span");
+  cnt.className = "fcount";
+  cnt.id = "filterCount";
+  box.append(cnt);
+}
+
+function buildPanel(f, counts, renderBtn) {
+  const panel = document.createElement("div");
+  panel.className = "ms-panel";
+
+  [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])))
+    .forEach(([k, n]) => {
+      const row = document.createElement("label");
+      row.className = "ms-opt";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = filters[f.key].includes(k);
+      const text = document.createElement("span");
+      text.className = "ms-txt";
+      text.textContent = filterLabel(f.key, k);
+      const num = document.createElement("span");
+      num.className = "ms-n";
+      num.textContent = n;
+      row.append(cb, text, num);
+
+      cb.onchange = () => {
+        if (cb.checked) filters[f.key].push(k);
+        else filters[f.key] = filters[f.key].filter((x) => x !== k);
+        renderBtn();
+        renderList();
+        updateClearButton();
+        save();
+      };
+      panel.append(row);
+    });
+
+  const foot = document.createElement("div");
+  foot.className = "ms-foot";
+  const clearOne = document.createElement("button");
+  clearOne.textContent = "清空此项";
+  clearOne.onclick = (e) => {
+    e.stopPropagation();
+    filters[f.key] = [];
+    panel.querySelectorAll("input[type=checkbox]").forEach((c) => { c.checked = false; });
+    renderBtn();
+    renderList();
+    updateClearButton();
+    save();
+  };
+  foot.append(clearOne);
+  panel.append(foot);
+
+  return panel;
+}
+
+/* 选中项变化后，主筛选行的「清除筛选」按钮要跟着出现/消失 */
+function updateClearButton() {
+  const box = $("#filters");
+  const existing = box.querySelector(".fclear");
+  if (activeFilterCount() > 0 && !existing) {
+    const clr = document.createElement("button");
+    clr.className = "fclear";
+    clr.textContent = "清除筛选";
+    clr.onclick = () => { clearFilters(); save(); renderAll(); };
+    box.insertBefore(clr, box.querySelector(".fcount"));
+  } else if (activeFilterCount() === 0 && existing) {
+    existing.remove();
+  }
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".ms")) closeMsPanels();
+  if (!e.target.closest(".search")) hideSuggest();
+});
+
+/* ---------- 搜索框：识别系列片 / 一键切换 ---------- */
+let sugList = [];
+let sugIndex = -1;
+
+function hideSuggest() {
+  const el = $("#suggest");
+  if (!el || el.hidden) return;
+  el.hidden = true;
+  el.textContent = "";
+  sugList = [];
+  sugIndex = -1;
+}
+
+function switchSeries(id) {
+  if (!state.themes.some((t) => t.id === id)) state.themes.push({ id });
+  state.cur = id;
+  const q = $("#q");
+  if (q) q.value = "";
+  hideSuggest();
+  save();
+  renderAll();
+}
+
+function renderSuggest() {
+  const el = $("#suggest");
+  if (!el) return;
+  const q = $("#q").value.trim().toLowerCase();
+  if (!q) return hideSuggest();
+
+  // 只提示「别的」系列：当前片单已经显示在下面了
+  const matches = Object.entries(CATALOG)
+    .filter(([id]) => id !== state.cur)
+    .map(([id, s]) => ({
+      id,
+      s,
+      nameHit: s.name.toLowerCase().includes(q),
+      itemHits: s.items.filter((it) => it.t.toLowerCase().includes(q)).length,
+    }))
+    .filter((x) => x.nameHit || x.itemHits)
+    .sort((a, b) => (b.nameHit - a.nameHit) || (b.itemHits - a.itemHits)
+      || a.s.name.localeCompare(b.s.name, "zh"))
+    .slice(0, 6);
+
+  if (!matches.length) return hideSuggest();
+
+  sugList = matches;
+  sugIndex = -1;
+  el.textContent = "";
+
+  const head = document.createElement("div");
+  head.className = "sug-head";
+  head.textContent = "切换到系列片";
+  el.append(head);
+
+  matches.forEach((m, i) => {
+    const added = state.themes.some((t) => t.id === m.id);
+    const row = document.createElement("div");
+    row.className = "sug-row";
+    row.dataset.idx = i;
+
+    const nm = document.createElement("div");
+    nm.className = "sug-name";
+    nm.textContent = m.s.name;
+    const meta = document.createElement("div");
+    meta.className = "sug-meta";
+    meta.textContent = m.s.items.length + " 部" + (m.itemHits ? " · 命中 " + m.itemHits + " 部" : "");
+    const st = document.createElement("span");
+    st.className = "sug-state" + (added ? "" : " add");
+    st.textContent = added ? "切换" : "添加并切换";
+    row.append(nm, meta, st);
+
+    row.onmousedown = (e) => { e.preventDefault(); switchSeries(m.id); };
+    el.append(row);
+  });
+
+  el.hidden = false;
+}
+
+function moveSug(step) {
+  const rows = [...document.querySelectorAll("#suggest .sug-row")];
+  if (!rows.length) return;
+  sugIndex = (sugIndex + step + rows.length) % rows.length;
+  rows.forEach((r, i) => r.classList.toggle("active", i === sugIndex));
+  rows[sugIndex].scrollIntoView({ block: "nearest" });
+}
+
+function currentItems() {
+  const q = $("#q").value.trim().toLowerCase();
+  const f = document.querySelector("#chips button.on").dataset.f;
+  let list = itemsOf(state.cur);
+
+  if (q) {
+    list = list.filter((it) =>
+      (it.t + " " + (it.n || "") + " " + (it.s || "") + " " + (it.v || "")).toLowerCase().includes(q)
+    );
+  }
+  if (f === "seen") list = list.filter((it) => isWatched(state.cur, it));
+  if (f === "unseen") list = list.filter((it) => !isWatched(state.cur, it));
+
+  FILTER_FIELDS.forEach((fd) => {
+    const want = filters[fd.key];
+    if (want && want.length) list = list.filter((it) => want.indexOf(fd.of(it)) !== -1);
+  });
+
+  const mode = $("#sort").value;
+  const dOf = (it) => it.d || "9999-99-99";
+  if (mode === "date-asc") list.sort((a, b) => dOf(a).localeCompare(dOf(b)));
+  else if (mode === "date-desc") list.sort((a, b) => dOf(b).localeCompare(dOf(a)));
+  else if (mode === "title") list.sort((a, b) => a.t.localeCompare(b.t, "zh"));
+  else if (mode === "unseen") {
+    list.sort((a, b) => (isWatched(state.cur, a) - isWatched(state.cur, b)) || dOf(a).localeCompare(dOf(b)));
+  }
+  return list;
+}
+
+function renderHead() {
+  const all = itemsOf(state.cur);
+  const seen = all.filter((it) => isWatched(state.cur, it)).length;
+  $("#themeTitle").textContent = themeName(state.cur);
+  $("#themeSub").textContent =
+    all.length + " 部 · 已看 " + seen + " · 未看 " + (all.length - seen);
+  const pct = all.length ? Math.round((seen / all.length) * 100) : 0;
+  $("#barFill").style.width = pct + "%";
+  $("#progressText").textContent = "进度 " + pct + "%（" + seen + " / " + all.length + "）";
+}
+
+function renderList() {
+  const ul = $("#list");
+  ul.textContent = "";
+  const list = currentItems();
+
+  const total = itemsOf(state.cur).length;
+  const cnt = $("#filterCount");
+  if (cnt) {
+    cnt.textContent = list.length === total
+      ? "共 " + total + " 部"
+      : "筛选出 " + list.length + " / " + total + " 部";
+  }
+
+  if (!list.length) {
+    const div = document.createElement("div");
+    div.className = "empty";
+    div.textContent = itemsOf(state.cur).length
+      ? "没有符合条件的条目。"
+      : "这个片单还是空的：用「新建片单」添加系列片，或搜索单片加进来。";
+    ul.append(div);
+    return;
+  }
+
+  const today = todayISO();
+  const frag = document.createDocumentFragment();
+
+  list.forEach((it) => {
+    const done = isWatched(state.cur, it);
+    const li = document.createElement("li");
+    li.className = "row" + (done ? " done" : "");
+    li.title = done ? "点击取消「已看」" : "点击标记「已看」";
+
+    const chk = document.createElement("button");
+    chk.className = "check";
+    chk.setAttribute("aria-label", done ? "取消已看" : "标记已看");
+
+    const info = document.createElement("div");
+    info.className = "info";
+
+    const line = document.createElement("div");
+    line.className = "line1";
+
+    const title = document.createElement("span");
+    title.className = "title";
+    title.textContent = it.t;
+    line.append(title);
+
+    if (it.v) {
+      const t = document.createElement("span");
+      t.className = "tag";
+      t.textContent = it.v;
+      line.append(t);
+    }
+    if (it.s && it.s !== it.v) {
+      const t = document.createElement("span");
+      t.className = "tag";
+      t.textContent = it.s;
+      line.append(t);
+    }
+    if (!done && it.d && it.d > today) {
+      const t = document.createElement("span");
+      t.className = "tag soon";
+      t.textContent = "未上映";
+      line.append(t);
+    }
+
+    const date = document.createElement("span");
+    date.className = "date";
+    date.textContent = fmt(it);
+    line.append(date);
+    info.append(line);
+
+    if (it.n && it.n !== it.s && it.n !== it.v) {
+      const n = document.createElement("div");
+      n.className = "note";
+      n.textContent = it.n;
+      info.append(n);
+    }
+
+    li.append(chk, info);
+    li.onclick = () => {
+      const k = wkey(state.cur, it);
+      if (state.watched[k]) delete state.watched[k];
+      else state.watched[k] = Date.now();
+      save(); renderAll();
+    };
+    frag.append(li);
+  });
+
+  ul.append(frag);
+}
+
+function renderAll() {
+  renderThemes();
+  renderHead();
+  buildFilters();
+  renderList();
+}
+
+/* ============================================================ modal */
+const overlay = $("#overlay");
+const modal = $("#modal");
+
+function openModal(title, build) {
+  modal.textContent = "";
+  const head = document.createElement("div");
+  head.className = "modal-head";
+  const h2 = document.createElement("h2");
+  h2.textContent = title;
+  const x = document.createElement("button");
+  x.className = "x";
+  x.textContent = "×";
+  x.onclick = closeModal;
+  head.append(h2, x);
+
+  const body = document.createElement("div");
+  body.className = "modal-body";
+  build(body);
+
+  modal.append(head, body);
+  overlay.hidden = false;
+}
+function closeModal() { overlay.hidden = true; }
+overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    if (openMsKey) { closeMsPanels(); return; }   // 先收下拉，再关弹窗
+    hideSuggest();
+    closeModal();
+  }
+  if (e.key === "/" && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+    e.preventDefault(); $("#q").focus();
+  }
+});
+
+/* ---------- 联网搜索（Wikidata，免密钥） ---------- */
+const WD_API = "https://www.wikidata.org/w/api.php";
+const WD_SPARQL = "https://query.wikidata.org/sparql";
+
+const FILM_TYPES = {
+  Q11424: "电影", Q202866: "动画电影", Q506240: "电视电影",
+  Q5398426: "电视剧", Q581714: "动画剧集", Q1259759: "迷你剧"
+};
+// 命中的条目本身就是「系列」时，直接当作系列片
+const SERIES_TYPES = { Q24856: "电影系列" };
+
+function claimIds(claims, prop) {
+  return (claims[prop] || [])
+    .map((c) => (c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value
+      ? c.mainsnak.datavalue.value.id : null))
+    .filter(Boolean);
+}
+
+function pickLabel(ent) {
+  const l = ent.labels || {};
+  return (l["zh-hans"] && l["zh-hans"].value)
+    || (l.zh && l.zh.value)
+    || (l.en && l.en.value) || "";
+}
+
+function datesOf(claims) {
+  const times = (claims.P577 || [])
+    .map((c) => (c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value
+      ? c.mainsnak.datavalue.value.time : null))
+    .filter(Boolean)
+    .map((t) => t.replace(/^\+/, ""));
+  const full = times
+    .filter((t) => !t.startsWith("0000") && t.slice(5, 7) !== "00")
+    .map((t) => t.slice(0, 10))
+    .filter((t) => /^\d{4}-\d{2}-\d{2}$/.test(t))
+    .sort();
+  if (full.length) return { d: full[0], ds: "" };
+  const years = times.map((t) => t.slice(0, 4))
+    .filter((y) => /^\d{4}$/.test(y) && y !== "0000").sort();
+  return years.length ? { d: years[0] + "-01-01", ds: years[0] + "年" } : { d: "", ds: "" };
+}
+
+async function onlineSearch(q) {
+  const u1 = WD_API + "?action=wbsearchentities&format=json&origin=*&language=zh&uselang=zh"
+    + "&type=item&limit=15&search=" + encodeURIComponent(q);
+  const r1 = await fetch(u1);
+  if (!r1.ok) throw new Error("HTTP " + r1.status);
+  const j1 = await r1.json();
+  const hits = (j1.search || []).filter((h) => h.id);
+  if (!hits.length) return { films: [], series: [] };
+
+  const desc = {};
+  hits.forEach((h) => { desc[h.id] = h.description || ""; });
+
+  const u2 = WD_API + "?action=wbgetentities&format=json&origin=*&props=claims|labels"
+    + "&languages=zh-hans|zh|en&ids=" + hits.map((h) => h.id).join("|");
+  const r2 = await fetch(u2);
+  if (!r2.ok) throw new Error("HTTP " + r2.status);
+  const j2 = await r2.json();
+
+  const films = [];
+  const hitSeries = new Map();      // 影片反查出来的系列 -> 命中数
+  const seriesLabels = new Map();   // 系列 QID -> 名称
+
+  Object.entries(j2.entities || {}).forEach(([qid, ent]) => {
+    const claims = ent.claims || {};
+    const p31 = claimIds(claims, "P31");
+    const label = pickLabel(ent);
+    if (!label) return;
+
+    // ① 命中的条目本身就是系列
+    if (p31.some((t) => SERIES_TYPES[t])) {
+      seriesLabels.set(qid, label);
+      return;
+    }
+
+    const kind = p31.map((t) => FILM_TYPES[t]).find(Boolean);
+    if (!kind) return;
+
+    // ② 反查这部片子属于哪个系列（P179 = part of the series）
+    claimIds(claims, "P179").forEach((sid) => {
+      hitSeries.set(sid, (hitSeries.get(sid) || 0) + 1);
+    });
+
+    const { d, ds } = datesOf(claims);
+    let note = (desc[qid] || "").replace(/^\d{4}年(的)?/, "").trim();
+    if (note === "電影" || note === "电影" || note.length < 2) note = "";
+
+    films.push({ t: label, d, ds, v: kind, s: "", n: note, qid });
+  });
+
+  // 补齐系列名称
+  const unknown = [...hitSeries.keys()].filter((id) => !seriesLabels.has(id));
+  if (unknown.length) {
+    try {
+      const u3 = WD_API + "?action=wbgetentities&format=json&origin=*&props=labels"
+        + "&languages=zh-hans|zh|en&ids=" + unknown.join("|");
+      const r3 = await fetch(u3);
+      if (r3.ok) {
+        const j3 = await r3.json();
+        Object.entries(j3.entities || {}).forEach(([id, ent]) => {
+          const lab = pickLabel(ent);
+          if (lab) seriesLabels.set(id, lab);
+        });
+      }
+    } catch (e) { /* 拿不到名称就不提示这条系列 */ }
+  }
+
+  const series = [...seriesLabels.entries()]
+    .map(([qid, label]) => ({ qid, label, hits: hitSeries.get(qid) || 0 }))
+    .sort((a, b) => b.hits - a.hits)
+    .slice(0, 3);
+
+  const seen = new Set();
+  const uniq = films.filter((x) => {
+    const k = x.t + "@" + (x.d || "").slice(0, 4);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  return { films: uniq, series };
+}
+
+/* 取某个系列的全部成员（SPARQL） */
+async function seriesMembers(qid) {
+  const sparql = "SELECT ?film ?filmLabel (MIN(?d) AS ?date) WHERE {"
+    + " ?film wdt:P179 wd:" + qid + " ."
+    + " OPTIONAL { ?film wdt:P577 ?d . }"
+    + " SERVICE wikibase:label { bd:serviceParam wikibase:language \"zh-hans,zh,en\". }"
+    + " } GROUP BY ?film ?filmLabel ORDER BY ?date LIMIT 400";
+  const url = WD_SPARQL + "?format=json&query=" + encodeURIComponent(sparql);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const j = await r.json();
+  return (j.results.bindings || [])
+    .map((b) => ({
+      t: b.filmLabel ? b.filmLabel.value : "",
+      d: b.date && b.date.value ? b.date.value.slice(0, 10) : "",
+      ds: "", v: "电影", s: "", n: "",
+    }))
+    .filter((x) => x.t && !/^Q\d+$/.test(x.t));
+}
+
+/* 用联网查到的系列建一个片单并切过去 */
+async function openSeriesTheme(qid, label, onStatus) {
+  const id = "wd" + qid;
+  if (onStatus) onStatus("正在获取「" + label + "」的完整片目…");
+  const items = await seriesMembers(qid);
+  if (!items.length) throw new Error("这个系列没取到片目");
+
+  let th = state.themes.find((t) => t.id === id);
+  if (!th) {
+    th = { id, name: label };
+    state.themes.push(th);
+  }
+  const bucket = state.extra[id] || [];
+  const seen = new Set(bucket.map(keyOf));
+  let added = 0;
+  items.forEach((it) => {
+    if (!seen.has(keyOf(it))) { bucket.push(it); seen.add(keyOf(it)); added++; }
+  });
+  state.extra[id] = bucket;
+  state.cur = id;
+  save();
+  renderAll();
+  closeModal();
+  return { added, total: items.length };
+}
+
+/* ---------- 新建自定义片单 ---------- */
+/* ---------- 重命名片单 ---------- */
+function openRename(themeId) {
+  const cur = themeName(themeId);
+  openModal("重命名片单", (body) => {
+    const f = document.createElement("div");
+    f.className = "field";
+    const label = document.createElement("label");
+    label.textContent = "名称";
+    const input = document.createElement("input");
+    input.value = cur;
+    input.maxLength = 40;
+    f.append(label, input);
+
+    const bar = document.createElement("div");
+    bar.className = "row-actions";
+    const ok = document.createElement("button");
+    ok.className = "btn primary";
+    ok.textContent = "保存";
+    const cancel = document.createElement("button");
+    cancel.className = "btn";
+    cancel.textContent = "取消";
+    cancel.onclick = closeModal;
+    bar.append(ok, cancel);
+
+    const apply = () => {
+      const name = input.value.trim();
+      if (!name) return;
+      const th = state.themes.find((t) => t.id === themeId);
+      if (th) th.name = name;
+      save(); renderAll(); closeModal();
+    };
+    ok.onclick = apply;
+    input.onkeydown = (e) => { if (e.key === "Enter") apply(); };
+
+    body.append(f, bar);
+    input.focus(); input.select();
+  });
+}
+
+/* ---------- 添加片单 / 搜索添加 ---------- */
+function openAdd() {
+  openModal("新建片单", (body) => {
+    /* ---- ① 自定义片单 ---- */
+    const nameField = document.createElement("div");
+    nameField.className = "field";
+    const nameLabel = document.createElement("label");
+    nameLabel.textContent = "自定义片单";
+    const nameRow = document.createElement("div");
+    nameRow.className = "name-row";
+    const nameInput = document.createElement("input");
+    nameInput.placeholder = "起个名字，例如：诺兰作品集、2026 待看";
+    nameInput.maxLength = 40;
+    nameInput.autocomplete = "off";
+    const nameBtn = document.createElement("button");
+    nameBtn.className = "btn primary";
+    nameBtn.textContent = "创建";
+    nameRow.append(nameInput, nameBtn);
+    nameField.append(nameLabel, nameRow);
+
+    const createBlank = () => {
+      const name = nameInput.value.trim();
+      if (!name) { nameInput.focus(); return; }
+      const id = "u" + Date.now().toString(36);
+      state.themes.push({ id, name });
+      state.cur = id;
+      save(); renderAll(); closeModal();
+    };
+    nameBtn.onclick = createBlank;
+    nameInput.onkeydown = (e) => { if (e.key === "Enter") createBlank(); };
+
+    /* ---- ② 或者从片库 / 联网添加 ---- */
+    const divider = document.createElement("div");
+    divider.className = "divider";
+    divider.textContent = "或从下面添加";
+
+    const modeBar = document.createElement("div");
+    modeBar.className = "chips";
+    modeBar.style.marginBottom = "12px";
+    const bLib = document.createElement("button");
+    bLib.className = "on";
+    bLib.textContent = "本地片库";
+    const bNet = document.createElement("button");
+    bNet.textContent = "联网搜索";
+    modeBar.append(bLib, bNet);
+
+    const f = document.createElement("div");
+    f.className = "field";
+    const label = document.createElement("label");
+    label.textContent = "搜索片库";
+    const input = document.createElement("input");
+    input.placeholder = "输入系列名或片名，例如：007、星球大战、蜘蛛侠";
+    input.autocomplete = "off";
+    f.append(label, input);
+
+    const res = document.createElement("div");
+    res.className = "result";
+
+    const hint = document.createElement("div");
+    hint.className = "hint";
+    hint.textContent = "系列片会作为一个新片单加入左侧；单片会直接加进当前片单「" + themeName(state.cur) + "」。";
+
+    body.append(nameField, divider, modeBar, f, res, hint);
+
+    let mode = "lib";
+
+    const drawLib = () => {
+      const q = input.value.trim().toLowerCase();
+      res.textContent = "";
+
+      const seriesHits = Object.entries(CATALOG)
+        .filter(([id, s]) => !q || s.name.toLowerCase().includes(q)
+          || s.items.some((i) => i.t.toLowerCase().includes(q)));
+
+      const h1 = document.createElement("h4");
+      h1.textContent = "系列片（" + seriesHits.length + "）";
+      res.append(h1);
+
+      seriesHits.forEach(([id, s]) => {
+        const added = state.themes.some((t) => t.id === id);
+        const row = document.createElement("div");
+        row.className = "hit";
+        const hi = document.createElement("div");
+        hi.className = "hi";
+        const ht = document.createElement("div");
+        ht.className = "ht";
+        ht.textContent = s.name;
+        const hs = document.createElement("div");
+        hs.className = "hs";
+        hs.textContent = s.items.length + " 部";
+        hi.append(ht, hs);
+        const btn = document.createElement("button");
+        btn.className = "btn" + (added ? "" : " primary");
+        btn.textContent = added ? "已添加" : "添加";
+        btn.disabled = added;
+        btn.onclick = () => {
+          state.themes.push({ id });
+          state.cur = id;
+          save(); renderAll(); drawLib();
+        };
+        row.append(hi, btn);
+        res.append(row);
+      });
+
+      const filmHits = [];
+      Object.entries(CATALOG).forEach(([id, s]) => {
+        s.items.forEach((it) => {
+          if (!q || it.t.toLowerCase().includes(q)) filmHits.push({ id, s, it });
+        });
+      });
+
+      const h2 = document.createElement("h4");
+      h2.textContent = "单片（" + filmHits.length + "，加入当前片单：" + themeName(state.cur) + "）";
+      res.append(h2);
+
+      filmHits.slice(0, 60).forEach(({ s, it }) => {
+        res.append(hitRow(it.t, s.name + " · " + fmt(it), it));
+      });
+
+      if (!filmHits.length) {
+        const p = document.createElement("div");
+        p.className = "hint";
+        p.textContent = "片库里没有匹配的单片，切到「联网搜索」试试。";
+        res.append(p);
+      }
+    };
+
+    function hitRow(title, sub, item) {
+      const row = document.createElement("div");
+      row.className = "hit";
+      const hi = document.createElement("div");
+      hi.className = "hi";
+      const ht = document.createElement("div");
+      ht.className = "ht";
+      ht.textContent = title;
+      const hs = document.createElement("div");
+      hs.className = "hs";
+      hs.textContent = sub;
+      hi.append(ht, hs);
+      const btn = document.createElement("button");
+      btn.className = "btn";
+      btn.textContent = "加入";
+      btn.onclick = () => {
+        addItemTo(state.cur, item);
+        btn.textContent = "已加入";
+        btn.disabled = true;
+      };
+      row.append(hi, btn);
+      return row;
+    }
+
+    let netSeq = 0;
+    const drawNet = async () => {
+      const q = input.value.trim();
+      res.textContent = "";
+      if (q.length < 2) {
+        const p = document.createElement("div");
+        p.className = "hint";
+        p.textContent = "输入至少 2 个字，从 Wikidata 联网检索电影/剧集。";
+        res.append(p);
+        return;
+      }
+      const seq = ++netSeq;
+      const loading = document.createElement("div");
+      loading.className = "hint";
+      loading.textContent = "联网检索中…";
+      res.append(loading);
+
+      try {
+        const { films, series } = await onlineSearch(q);
+        if (seq !== netSeq) return;
+        res.textContent = "";
+
+        /* ① 识别到的系列片：可直接建片单并切过去 */
+        if (series.length) {
+          const hs = document.createElement("h4");
+          hs.textContent = "识别到系列片";
+          res.append(hs);
+
+          series.forEach((s) => {
+            const row = document.createElement("div");
+            row.className = "hit";
+            const hi = document.createElement("div");
+            hi.className = "hi";
+            const ht = document.createElement("div");
+            ht.className = "ht";
+            ht.textContent = s.label;
+            const sub = document.createElement("div");
+            sub.className = "hs";
+            sub.textContent = s.hits
+              ? "命中 " + s.hits + " 部 · 点右侧取完整片目"
+              : "电影系列 · 点右侧取完整片目";
+            hi.append(ht, sub);
+
+            const btn = document.createElement("button");
+            btn.className = "btn primary";
+            const exists = state.themes.some((t) => t.id === "wd" + s.qid);
+            btn.textContent = exists ? "切换" : "新建片单";
+            btn.onclick = async () => {
+              btn.disabled = true;
+              const old = btn.textContent;
+              btn.textContent = "获取中…";
+              try {
+                const r = await openSeriesTheme(s.qid, s.label);
+                void r;
+              } catch (err) {
+                btn.disabled = false;
+                btn.textContent = old;
+                sub.textContent = "获取失败：" + err.message;
+              }
+            };
+            row.append(hi, btn);
+            res.append(row);
+          });
+        }
+
+        /* ② 单片结果 */
+        const h = document.createElement("h4");
+        h.textContent = films.length
+          ? "单片（" + films.length + "，加入当前片单：" + themeName(state.cur) + "）"
+          : "单片";
+        res.append(h);
+
+        if (!films.length) {
+          const p = document.createElement("div");
+          p.className = "hint";
+          p.textContent = series.length
+            ? "没有匹配的单片，可以点上面的系列片新建片单。"
+            : "没有找到匹配的电影/剧集，换个关键词试试。";
+          res.append(p);
+          return;
+        }
+
+        films.forEach((it) => {
+          const sub = [it.v, it.ds || (it.d ? it.d.slice(0, 4) + "年" : "年份未知"), it.n]
+            .filter(Boolean).join(" · ");
+          res.append(hitRow(it.t, sub, it));
+        });
+      } catch (err) {
+        if (seq !== netSeq) return;
+        res.textContent = "";
+        const p = document.createElement("div");
+        p.className = "hint";
+        p.textContent = "联网搜索失败：" + err.message + "。检查网络后重试。";
+        res.append(p);
+      }
+    };
+
+    const redraw = () => (mode === "lib" ? drawLib() : drawNet());
+
+    bLib.onclick = () => {
+      mode = "lib";
+      bLib.classList.add("on"); bNet.classList.remove("on");
+      label.textContent = "搜索片库";
+      input.placeholder = "输入系列名或片名，例如：007、星球大战、蜘蛛侠";
+      redraw();
+    };
+    bNet.onclick = () => {
+      mode = "net";
+      bNet.classList.add("on"); bLib.classList.remove("on");
+      label.textContent = "联网搜索（Wikidata，免密钥）";
+      input.placeholder = "输入片名，例如：沙丘、奥本海默";
+      redraw();
+    };
+
+    let timer = null;
+    input.oninput = () => {
+      clearTimeout(timer);
+      if (mode === "lib") return drawLib();
+      timer = setTimeout(drawNet, 400);
+    };
+
+    drawLib();
+    input.focus();
+  });
+}
+
+function addItemTo(themeId, it) {
+  if (!state.extra[themeId]) state.extra[themeId] = [];
+  const exists = itemsOf(themeId).some((x) => keyOf(x) === keyOf(it));
+  if (!exists) {
+    state.extra[themeId].push({ t: it.t, d: it.d || "", ds: it.ds || "", v: it.v || "", s: it.s || "", n: it.n || "" });
+    save(); renderAll();
+  }
+}
+
+/* ---------- 更新 ---------- */
+function openUpdate() {
+  openModal("更新片单", (body) => {
+    const note = document.createElement("div");
+    note.className = "hint";
+    note.textContent =
+      "三种方式，任选其一：\n" +
+      "① 在线同步：用 TMDB 按系列名拉取该系列全部影片，自动补上片库里没有的新片（需要免费 API Key）。\n" +
+      "② 导入文件：选择别人给你的更新包 .json。\n" +
+      "③ 粘贴 JSON：直接贴一段数据。";
+    body.append(note);
+
+    const fk = document.createElement("div");
+    fk.className = "field";
+    fk.style.marginTop = "14px";
+    const lk = document.createElement("label");
+    lk.textContent = "TMDB API Key（可留空，仅在线同步需要）";
+    const ik = document.createElement("input");
+    ik.value = state.settings.tmdbKey || "";
+    ik.placeholder = "在 themoviedb.org 免费申请";
+    ik.oninput = () => { state.settings.tmdbKey = ik.value.trim(); save(); };
+    fk.append(lk, ik);
+
+    const fc = document.createElement("div");
+    fc.className = "field";
+    const lc = document.createElement("label");
+    lc.textContent = "TMDB 系列 ID（可留空，留空则按片单名称搜索）";
+    const ic = document.createElement("input");
+    ic.placeholder = "例如 漫威合集 ID；留空自动搜索";
+    fc.append(lc, ic);
+    body.append(fk, fc);
+
+    const bar = document.createElement("div");
+    bar.className = "row-actions";
+    const bSync = document.createElement("button");
+    bSync.className = "btn primary";
+    bSync.textContent = "在线同步当前片单";
+    const bFile = document.createElement("button");
+    bFile.className = "btn";
+    bFile.textContent = "导入 .json 文件";
+    const bPaste = document.createElement("button");
+    bPaste.className = "btn";
+    bPaste.textContent = "粘贴 JSON";
+    bar.append(bSync, bFile, bPaste);
+    body.append(bar);
+
+    const log = document.createElement("div");
+    log.className = "log";
+    body.append(log);
+
+    const say = (t) => { log.textContent = t; };
+
+    bSync.onclick = async () => {
+      const key = (state.settings.tmdbKey || "").trim();
+      if (!key) { say("请先填 TMDB API Key。没有 Key 的话，可以用 ② 或 ③ 导入。"); return; }
+      const idRaw = ic.value.trim();
+      bSync.disabled = true;
+      try {
+        say("正在同步…");
+        let collectionId = idRaw;
+        if (!collectionId) {
+          const q = encodeURIComponent(themeName(state.cur));
+          const r = await fetch("https://api.themoviedb.org/3/search/collection?language=zh-CN&query=" + q + "&api_key=" + key);
+          if (!r.ok) throw new Error("搜索系列失败 HTTP " + r.status);
+          const j = await r.json();
+          if (!j.results || !j.results.length) throw new Error("没找到同名系列，请在下方填 TMDB 系列 ID");
+          collectionId = j.results[0].id;
+          say("匹配到系列：" + j.results[0].name + "（ID " + collectionId + "），正在拉取…");
+        }
+        const r2 = await fetch("https://api.themoviedb.org/3/collection/" + collectionId + "?language=zh-CN&api_key=" + key);
+        if (!r2.ok) throw new Error("拉取系列失败 HTTP " + r2.status);
+        const c = await r2.json();
+        const parts = c.parts || [];
+        const have = new Set(itemsOf(state.cur).map((x) => x.t));
+        let added = 0, updated = 0;
+
+        parts.forEach((p) => {
+          const t = p.title || p.name;
+          if (!t) return;
+          const d = p.release_date || "";
+          const existing = itemsOf(state.cur).find((x) => x.t === t);
+          if (existing) {
+            if (d && existing.d !== d) { existing.d = d; existing.ds = ""; updated++; }
+            return;
+          }
+          addItemTo(state.cur, {
+            t, d, ds: "", v: "电影", s: "TMDB",
+            n: p.original_title && p.original_title !== t ? p.original_title : ""
+          });
+          have.add(t); added++;
+        });
+        save(); renderAll();
+        say("同步完成：" + (c.name || "") + " 共 " + parts.length + " 部。\n新增 " + added + " 部，更新日期 " + updated + " 部。");
+      } catch (err) {
+        say("同步失败：" + err.message + "\n可改用导入文件或粘贴 JSON。");
+      } finally {
+        bSync.disabled = false;
+      }
+    };
+
+    bFile.onclick = () => {
+      const inp = document.createElement("input");
+      inp.type = "file";
+      inp.accept = ".json,application/json";
+      inp.onchange = () => {
+        const file = inp.files[0];
+        if (!file) return;
+        const rd = new FileReader();
+        rd.onload = () => { say(applyPayload(rd.result)); };
+        rd.readAsText(file, "utf-8");
+      };
+      inp.click();
+    };
+
+    bPaste.onclick = () => {
+      const ta = document.createElement("textarea");
+      ta.value = '[{"t":"片名","d":"2027-01-01","v":"电影","s":"MCU","n":"备注"}]';
+      ta.placeholder = '[{"t":"新片名","d":"2027-01-01","v":"电影","s":"MCU","n":"备注"}]';
+      const ok = document.createElement("button");
+      ok.className = "btn primary";
+      ok.textContent = "应用到当前片单";
+      ok.onclick = () => { say(applyPayload(ta.value)); ta.remove(); ok.remove(); };
+      body.append(ta, ok);
+      ta.focus(); ta.select();
+    };
+  });
+}
+
+function applyPayload(text) {
+  let data;
+  try { data = JSON.parse(text); }
+  catch (e) { return "JSON 格式有误：" + e.message; }
+
+  let items = [];
+  if (Array.isArray(data)) items = data;
+  else if (data && Array.isArray(data.items)) items = data.items;
+  else return "没找到 items 数组。格式应为 [...] 或 {name, items:[...]}。";
+
+  let added = 0;
+  items.forEach((raw) => {
+    if (!raw || !raw.t) return;
+    const it = { t: raw.t, d: raw.d || "", ds: raw.ds || "", v: raw.v || "电影", s: raw.s || "", n: raw.n || "" };
+    if (!itemsOf(state.cur).some((x) => keyOf(x) === keyOf(it))) { addItemTo(state.cur, it); added++; }
+  });
+  save(); renderAll();
+  return "导入完成：新增 " + added + " 条到「" + themeName(state.cur) + "」。";
+}
+
+/* ---------- 设置与备份 ---------- */
+function openSettings() {
+  openModal("设置与备份", (body) => {
+    const f1 = document.createElement("div");
+    f1.className = "field";
+    const l1 = document.createElement("label");
+    l1.textContent = "外观";
+    const b1 = document.createElement("button");
+    b1.className = "btn";
+    b1.textContent = state.settings.dark ? "切换到浅色" : "切换到深色";
+    b1.onclick = () => {
+      state.settings.dark = !state.settings.dark;
+      applyTheme(); save(); closeModal();
+    };
+    f1.append(l1, b1);
+
+    const f2 = document.createElement("div");
+    f2.className = "field";
+    const l2 = document.createElement("label");
+    l2.textContent = "备份";
+    const bar = document.createElement("div");
+    bar.className = "row-actions";
+
+    const bExp = document.createElement("button");
+    bExp.className = "btn";
+    bExp.textContent = "导出备份 .json";
+    bExp.onclick = () => {
+      const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "片单备份-" + todayISO() + ".json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+
+    const bImp = document.createElement("button");
+    bImp.className = "btn";
+    bImp.textContent = "从备份恢复";
+    bImp.onclick = () => {
+      const inp = document.createElement("input");
+      inp.type = "file";
+      inp.accept = ".json";
+      inp.onchange = () => {
+        const file = inp.files[0];
+        if (!file) return;
+        const rd = new FileReader();
+        rd.onload = () => {
+          try {
+            const s = JSON.parse(rd.result);
+            if (!Array.isArray(s.themes)) throw new Error("不是备份文件");
+            state = Object.assign(structuredClone(DEFAULT_STATE), s,
+              { settings: Object.assign({}, DEFAULT_STATE.settings, s.settings || {}) });
+            save(); applyTheme(); renderAll(); closeModal();
+          } catch (e) { alert("恢复失败：" + e.message); }
+        };
+        rd.readAsText(file, "utf-8");
+      };
+      inp.click();
+    };
+
+    const bReset = document.createElement("button");
+    bReset.className = "btn";
+    bReset.textContent = "清空已看记录";
+    bReset.onclick = () => {
+      if (!confirm("只清空「已看」标记，片单和条目保留？")) return;
+      state.watched = {}; save(); renderAll(); closeModal();
+    };
+
+    bar.append(bExp, bImp, bReset);
+    f2.append(l2, bar);
+    body.append(f1, f2);
+
+    const h = document.createElement("div");
+    h.className = "hint";
+    h.textContent =
+      (storageMode === "disk"
+        ? "数据保存在 data\\state.json：改动后自动写回，上一版留作 state.bak.json。\n"
+        : "当前没连上本地服务，数据暂存在浏览器里；用「启动片单.bat」打开即可存到 data\\。\n") +
+      "换电脑前记得导出备份。\n" +
+      "快捷键：/ 聚焦搜索，Esc 关闭弹窗。";
+    body.append(h);
+  });
+}
+
+/* ============================================================ init */
+function applyTheme() {
+  document.documentElement.dataset.theme = state.settings.dark ? "dark" : "light";
+}
+
+function updateStorageBadge() {
+  const el = $("#storageInfo");
+  if (el) {
+    el.textContent = "";
+    if (storageMode === "disk") {
+      el.append("数据：");
+      const b = document.createElement("b");
+      b.textContent = "data/state.json";
+      el.append(b);
+    } else {
+      el.textContent = "数据：浏览器本地（用「启动片单.bat」打开可存到 data/）";
+    }
+  }
+  const banner = $("#offlineBanner");
+  if (banner) banner.hidden = storageMode === "disk";
+}
+
+/* 服务没起来时每隔一会儿探一次，恢复后自动切回写盘，避免一直悄悄存浏览器 */
+let recheckTimer = null;
+function startRecheck() {
+  if (recheckTimer) return;
+  recheckTimer = setInterval(async () => {
+    if (storageMode === "disk") { clearInterval(recheckTimer); recheckTimer = null; return; }
+    try {
+      const r = await fetch(API + "/api/health", { cache: "no-store" });
+      if (!r.ok) return;
+      storageMode = "disk";
+      updateStorageBadge();
+      await saveState(true);   // 把浏览器里的当前状态补写进 data/
+      clearInterval(recheckTimer);
+      recheckTimer = null;
+    } catch (e) { /* 还没起来，下次再试 */ }
+  }, 15000);
+}
+
+$("#btnAddTheme").onclick = openAdd;
+$("#btnUpdate").onclick = openUpdate;
+$("#btnSettings").onclick = openSettings;
+$("#q").oninput = () => { renderList(); renderSuggest(); };
+$("#q").onkeydown = (e) => {
+  const open = !$("#suggest").hidden;
+  if (!open) { if (e.key === "Escape") hideSuggest(); return; }
+  if (e.key === "ArrowDown") { e.preventDefault(); moveSug(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); moveSug(-1); }
+  else if (e.key === "Enter" && sugIndex >= 0) {
+    e.preventDefault();
+    switchSeries(sugList[sugIndex].id);
+  } else if (e.key === "Escape") {
+    hideSuggest();
+  }
+};
+$("#sort").onchange = () => { renderList(); save(); };
+$("#chips").onclick = (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  document.querySelectorAll("#chips button").forEach((x) => x.classList.toggle("on", x === b));
+  renderList();
+  save();
+};
+
+window.__readyPromise = (async function init() {
+  await bootState();
+  applyTheme();
+  applyUiState();      // 还原上次的筛选 / 排序 / 已看筛选
+  renderAll();
+  updateStorageBadge();
+  if (storageMode !== "disk") startRecheck();
+})();
+</script>
+</body>
+</html>

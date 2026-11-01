@@ -1,0 +1,22 @@
+# 默认按文本处理，换行统一
+* text=auto
+
+# 批处理必须用 CRLF，且只能是纯 ASCII（cmd 按本地代码页解析）
+*.bat text eol=crlf
+
+# PowerShell 脚本用 CRLF；注意文件本身必须是 UTF-8 with BOM，
+# 否则 PowerShell 5.1 在非中文系统上会把中文读成乱码
+*.ps1 text eol=crlf
+
+*.html text eol=lf
+*.js   text eol=lf
+*.css  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+
+# 二进制
+*.docx binary
+*.xlsx binary
+*.zip  binary
+*.png  binary
+*.jpg  binary

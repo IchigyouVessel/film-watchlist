@@ -181,7 +181,7 @@ while ($true) {
             if ($exists) { $savedAt = (Get-Item $StatePath).LastWriteTime.ToString('s') }
             Send-Json -Stream $stream -Code 200 -Obj ([ordered]@{
                 ok        = $true
-                service   = 'pian'
+                service   = 'film'
                 engine    = 'powershell'
                 data_dir  = $DataDir
                 has_state = $exists

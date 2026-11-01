@@ -1,6 +1,6 @@
 @echo off
 rem ===============================================================
-rem  Pian watchlist launcher
+rem  Film watchlist launcher
 rem  Starts a local PowerShell web server (built into Windows),
 rem  then opens the app in the default browser.
 rem  No Python / Node / any third-party library required.
@@ -14,8 +14,8 @@ cd /d "%~dp0"
 set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if not exist "%PS%" set "PS=powershell.exe"
 
-echo Starting Pian watchlist...
-start "Pian Server" /min "%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0server.ps1"
+echo Starting Film watchlist...
+start "Film Server" /min "%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0server.ps1"
 
 rem ping is used as a delay: unlike timeout, it also works when stdin is redirected
 ping -n 5 127.0.0.1 >nul

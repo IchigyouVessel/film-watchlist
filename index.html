@@ -159,6 +159,71 @@
   .tag.seen{background:var(--chip);color:var(--sub)}
   .date{margin-left:auto;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;white-space:nowrap}
   .note{font-size:12px;color:var(--sub);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 「观看」按钮 + 平台菜单 */
+  .watch{
+    flex:0 0 auto;align-self:center;margin-left:6px;
+    padding:4px 9px;border-radius:8px;border:1px solid var(--line);
+    background:transparent;color:var(--sub);font-size:11px;line-height:1;white-space:nowrap;
+    opacity:.5;transition:opacity .15s,color .15s,background .15s,border-color .15s;
+  }
+  .row:hover .watch{opacity:1}
+  .watch:hover{color:var(--accent);border-color:var(--accent);background:var(--accent-soft);opacity:1}
+  .row.done .watch{opacity:.3}
+  .row.done:hover .watch{opacity:1}
+  @media (hover:none){ .watch{opacity:.8} }
+
+  .watch-menu[hidden]{display:none}
+  .watch-menu{
+    position:absolute;z-index:90;min-width:158px;padding:6px;
+    background:var(--panel);border:1px solid var(--line);border-radius:11px;box-shadow:var(--shadow);
+  }
+  .wm-head{
+    font-size:11px;color:var(--sub);padding:5px 9px 7px;
+    max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .wm-item{
+    display:flex;align-items:center;gap:9px;padding:8px 9px;border-radius:8px;
+    text-decoration:none;color:var(--text);font-size:13px;
+  }
+  .wm-item:hover{background:var(--chip)}
+  .wm-item i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+  .wm-hint{margin-left:auto;font-size:10.5px;color:var(--sub);opacity:.85;white-space:nowrap}
+  .wm-item.custom:hover .wm-hint{color:var(--accent);opacity:1}
+  .wm-empty{padding:8px 9px;font-size:12px;color:var(--sub);line-height:1.6}
+
+  .plat-picker{display:flex;flex-wrap:wrap;gap:8px}
+  .plat-opt{
+    display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:9px;
+    border:1px solid var(--line);background:var(--bg);font-size:12.5px;cursor:pointer;
+  }
+  .plat-opt:hover{border-color:var(--accent)}
+  .plat-opt input{accent-color:var(--accent);width:14px;height:14px;margin:0;cursor:pointer}
+  .plat-opt i{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+  .plat-del{
+    border:0;background:none;color:var(--sub);font-size:15px;line-height:1;
+    padding:0 1px;margin-left:2px;cursor:pointer;
+  }
+  .plat-del:hover{color:#ff3b30}
+  .plat-add{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .plat-add input{
+    flex:1 1 150px;min-width:0;padding:7px 10px;border-radius:9px;
+    border:1px solid var(--line);background:var(--bg);color:var(--text);
+    font-size:12.5px;font-family:inherit;outline:none;
+  }
+  .plat-add input:focus{border-color:var(--accent)}
+  .plat-add input::placeholder{color:var(--sub)}
+  .plat-err{min-height:15px;margin-top:6px;font-size:11.5px;color:var(--ok)}
+  .plat-err.bad{color:#ff3b30}
+  .toast{
+    position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(10px);
+    background:rgba(28,28,30,.94);color:#fff;font-size:13px;line-height:1.5;
+    padding:9px 16px;border-radius:10px;max-width:80vw;
+    opacity:0;pointer-events:none;transition:opacity .18s ease,transform .18s ease;z-index:120;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  html[data-theme="dark"] .toast{background:rgba(245,245,247,.95);color:#1d1d1f}
+
   .empty{color:var(--sub);text-align:center;padding:60px 20px;font-size:14px;line-height:1.9}
 
   /* ---------- modal ---------- */
@@ -275,6 +340,8 @@
   </main>
 </div>
 
+<div class="watch-menu" id="watchMenu" hidden></div>
+<div class="toast" id="toast"></div>
 <div class="overlay" id="overlay" hidden><div class="modal" id="modal"></div></div>
 
 <script>
@@ -422,7 +489,7 @@ const DEFAULT_STATE = {
   cur: "marvel",
   watched: {},
   extra: {},
-  settings: { dark: false, tmdbKey: "" },
+  settings: { dark: false, tmdbKey: "", platforms: null, customPlatforms: [] },   // platforms: null = 全部默认开启
   // 界面状态：重开页面后沿用上次的筛选 / 排序 / 已看筛选
   ui: {
     filters: { v: [], s: [], dec: [], rel: [] },
@@ -438,6 +505,16 @@ let saveTimer = null;
 function normalize(s) {
   const base = Object.assign(structuredClone(DEFAULT_STATE), s || {});
   base.settings = Object.assign({}, DEFAULT_STATE.settings, (s && s.settings) || {});
+  const rawCustom = Array.isArray(base.settings.customPlatforms) ? base.settings.customPlatforms : [];
+  base.settings.customPlatforms = rawCustom.filter((c) =>
+    c && typeof c.id === "string" && typeof c.name === "string" && typeof c.url === "string"
+    && /^https?:\/\/\S+$/i.test(c.url));
+  const ids = PLATFORMS.map((p) => p.id).concat(base.settings.customPlatforms.map((c) => c.id));
+  if (!Array.isArray(base.settings.platforms)) {
+    base.settings.platforms = ids.slice();
+  } else {
+    base.settings.platforms = base.settings.platforms.filter((x) => ids.indexOf(x) >= 0);
+  }
   base.watched = base.watched || {};
   base.extra = base.extra || {};
 
@@ -552,6 +629,82 @@ function fmt(it) {
   if (!it.d) return "未定档";
   const [y, m, d] = it.d.split("-");
   return y + "年" + Number(m) + "月" + Number(d) + "日";
+}
+
+/* ---------- 观看平台 ---------- */
+const PLATFORMS = [
+  { id: "bilibili", name: "B站", color: "#fb7299",
+    url: (q) => "https://search.bilibili.com/all?keyword=" + encodeURIComponent(q) },
+  { id: "tencent", name: "腾讯视频", color: "#ff7f24",
+    url: (q) => "https://v.qq.com/x/search/?q=" + encodeURIComponent(q) },
+  { id: "iqiyi", name: "爱奇艺", color: "#00be06",
+    url: (q) => "https://so.iqiyi.com/so/q_" + encodeURIComponent(q) },
+  { id: "youku", name: "优酷", color: "#1f8fff",
+    url: (q) => "https://so.youku.com/search_video/q_" + encodeURIComponent(q) },
+  { id: "mgtv", name: "芒果TV", color: "#ff6a00",
+    url: (q) => "https://so.mgtv.com/so?k=" + encodeURIComponent(q) },
+];
+const PLATFORM_DEFAULT = PLATFORMS.map((p) => p.id);
+
+/* 用户自己加的平台：{ id, name, url }，url 是平台首页 */
+function customPlatforms() {
+  const list = state.settings && state.settings.customPlatforms;
+  return Array.isArray(list) ? list : [];
+}
+
+function allPlatforms() {
+  return PLATFORMS.concat(customPlatforms().map((c) => ({
+    id: c.id,
+    name: c.name,
+    color: "#8e8e93",
+    custom: true,
+    url: () => c.url,          // 自定义平台直接开首页，片名另走剪贴板
+  })));
+}
+
+function enabledPlatforms() {
+  const ids = state.settings.platforms || PLATFORM_DEFAULT;
+  return allPlatforms().filter((p) => ids.indexOf(p.id) >= 0);
+}
+
+/* 复制到剪贴板：优先 Clipboard API，file:// 等环境退回 execCommand */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* 落到下面的兜底 */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+    document.body.append(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}
+
+/* 底部轻提示 */
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
+}
+
+/* 搜索词：片名 + 年份，区分同名不同版本 */
+function watchQuery(it) {
+  const year = /^\d{4}/.test(it.d || "") ? it.d.slice(0, 4) : "";
+  return year ? it.t + " " + year : it.t;
 }
 
 function themeName(id) {
@@ -809,6 +962,7 @@ function updateClearButton() {
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".ms")) closeMsPanels();
   if (!e.target.closest(".search")) hideSuggest();
+  if (!e.target.closest(".watch") && !e.target.closest(".watch-menu")) closeWatchMenu();
 });
 
 /* ---------- 搜索框：识别系列片 / 一键切换 ---------- */
@@ -1016,7 +1170,16 @@ function renderList() {
       info.append(n);
     }
 
-    li.append(chk, info);
+    if (enabledPlatforms().length) {
+      const watch = document.createElement("button");
+      watch.className = "watch";
+      watch.textContent = "观看";
+      watch.title = "在视频平台搜索《" + it.t + "》";
+      watch.onclick = (e) => { e.stopPropagation(); openWatchMenu(watch, it); };
+      li.append(chk, info, watch);
+    } else {
+      li.append(chk, info);
+    }
     li.onclick = () => {
       const k = wkey(state.cur, it);
       if (state.watched[k]) delete state.watched[k];
@@ -1028,6 +1191,89 @@ function renderList() {
 
   ul.append(frag);
 }
+
+/* ---------- 「观看」平台菜单 ---------- */
+/* 容器一开始就在页面里，只切换显隐：动态新建的浮层在某些渲染路径下不会被绘制 */
+function watchMenuEl() { return document.getElementById("watchMenu"); }
+
+function closeWatchMenu() {
+  const m = watchMenuEl();
+  if (!m || m.hidden) return;
+  m.hidden = true;
+  m.textContent = "";
+  delete m.dataset.for;
+}
+
+function openWatchMenu(anchor, it) {
+  const menu = watchMenuEl();
+  if (!menu) return;
+  const again = !menu.hidden && menu.dataset.for === keyOf(it);
+  closeWatchMenu();
+  if (again) return;                       // 再点一次收起
+
+  const q = watchQuery(it);
+  menu.dataset.for = keyOf(it);
+
+  const head = document.createElement("div");
+  head.className = "wm-head";
+  head.textContent = "在哪个平台看《" + it.t + "》";
+  menu.append(head);
+
+  const plats = enabledPlatforms();
+  if (!plats.length) {
+    const tip = document.createElement("div");
+    tip.className = "wm-empty";
+    tip.textContent = "没有勾选平台，去「设置与备份」里选。";
+    menu.append(tip);
+  }
+  plats.forEach((p) => {
+    const a = document.createElement("a");
+    a.className = "wm-item" + (p.custom ? " custom" : "");
+    a.href = p.url(q);
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    const dot = document.createElement("i");
+    dot.style.background = p.color;
+    const nm = document.createElement("span");
+    nm.textContent = p.name;
+    a.append(dot, nm);
+
+    if (p.custom) {
+      // 自定义平台：打开它的首页，同时把片名复制到剪贴板
+      const tip = document.createElement("span");
+      tip.className = "wm-hint";
+      tip.textContent = "复制片名";
+      a.append(tip);
+      a.onclick = () => {
+        copyText(it.t).then((ok) => {
+          toast(ok
+            ? "已复制「" + it.t + "」，粘贴到搜索框即可"
+            : "复制失败，片名：" + it.t);
+        });
+        closeWatchMenu();
+      };
+    } else {
+      a.onclick = () => closeWatchMenu();
+    }
+    menu.append(a);
+  });
+
+  const r = anchor.getBoundingClientRect();
+  menu.hidden = false;
+  const w = menu.offsetWidth;
+  const h = menu.offsetHeight;
+  const sx = window.scrollX || 0;
+  const sy = window.scrollY || 0;
+  let left = Math.min(r.right - w, window.innerWidth - w - 8);
+  left = Math.max(8, left);
+  let top = r.bottom + 6;
+  if (top + h > window.innerHeight - 8) top = r.top - h - 6;
+  menu.style.left = (left + sx) + "px";
+  menu.style.top = (Math.max(8, top) + sy) + "px";
+}
+
+document.addEventListener("scroll", closeWatchMenu, true);
+window.addEventListener("resize", closeWatchMenu);
 
 function renderAll() {
   renderThemes();
@@ -1063,7 +1309,8 @@ function closeModal() { overlay.hidden = true; }
 overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
-    if (openMsKey) { closeMsPanels(); return; }   // 先收下拉，再关弹窗
+    if (watchMenuEl() && !watchMenuEl().hidden) { closeWatchMenu(); return; }  // 先收观看菜单
+    if (openMsKey) { closeMsPanels(); return; }     // 再收筛选下拉，最后关弹窗
     hideSuggest();
     closeModal();
   }
@@ -1786,7 +2033,111 @@ function openSettings() {
 
     bar.append(bExp, bImp, bReset);
     f2.append(l2, bar);
-    body.append(f1, f2);
+
+    /* ---- 观看平台 ---- */
+    const fp = document.createElement("div");
+    fp.className = "field";
+    const lp = document.createElement("label");
+    lp.textContent = "观看平台（勾选后会出现在每行的「观看」按钮里）";
+    const picker = document.createElement("div");
+    picker.className = "plat-picker";
+
+    const renderPicker = () => {
+      picker.textContent = "";
+      const curIds = state.settings.platforms || PLATFORM_DEFAULT;
+      allPlatforms().forEach((p) => {
+        const opt = document.createElement("label");
+        opt.className = "plat-opt";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = curIds.indexOf(p.id) >= 0;
+        cb.onchange = () => {
+          const ids = (state.settings.platforms || PLATFORM_DEFAULT).slice();
+          const at = ids.indexOf(p.id);
+          if (cb.checked && at < 0) ids.push(p.id);
+          if (!cb.checked && at >= 0) ids.splice(at, 1);
+          state.settings.platforms = allPlatforms().map((x) => x.id).filter((id) => ids.indexOf(id) >= 0);
+          save();
+          renderList();
+        };
+        const dot = document.createElement("i");
+        dot.style.background = p.color;
+        const nm = document.createElement("span");
+        nm.textContent = p.name;
+        opt.append(cb, dot, nm);
+
+        if (p.custom) {
+          const del = document.createElement("button");
+          del.className = "plat-del";
+          del.textContent = "×";
+          del.title = "删除这个平台";
+          del.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!confirm("删除自定义平台「" + p.name + "」？")) return;
+            state.settings.customPlatforms = customPlatforms().filter((c) => c.id !== p.id);
+            state.settings.platforms = (state.settings.platforms || PLATFORM_DEFAULT).filter((id) => id !== p.id);
+            save(); renderPicker(); renderList();
+          };
+          opt.append(del);
+        }
+        picker.append(opt);
+      });
+    };
+    renderPicker();
+
+    /* 新增自定义平台 */
+    const addRow = document.createElement("div");
+    addRow.className = "plat-add";
+    const nameIn = document.createElement("input");
+    nameIn.type = "text";
+    nameIn.placeholder = "平台名称，例如 抖音";
+    const urlIn = document.createElement("input");
+    urlIn.type = "text";
+    urlIn.placeholder = "平台首页地址，例如 https://www.douyin.com";
+    const addBtn = document.createElement("button");
+    addBtn.className = "btn";
+    addBtn.textContent = "添加";
+    const err = document.createElement("div");
+    err.className = "plat-err";
+
+    const addPlatform = () => {
+      const name = nameIn.value.trim();
+      const url = urlIn.value.trim();
+      const fail = (msg, el) => {
+        err.textContent = msg;
+        err.classList.add("bad");
+        if (el) el.focus();
+      };
+      err.classList.remove("bad");
+      err.textContent = "";
+      if (!name) return fail("请填平台名称。", nameIn);
+      if (!url) return fail("请填搜索地址。", urlIn);
+      if (!/^https?:\/\/[^\s]+$/i.test(url)) {
+        return fail("地址必须以 http:// 或 https:// 开头。", urlIn);
+      }
+      const id = "cp" + Date.now().toString(36);
+      state.settings.customPlatforms = customPlatforms().concat([{ id, name, url }]);
+      state.settings.platforms = (state.settings.platforms || PLATFORM_DEFAULT).concat([id]);
+      save();
+      nameIn.value = "";
+      urlIn.value = "";
+      renderPicker();
+      renderList();
+      err.classList.remove("bad");
+      err.textContent = "已添加「" + name + "」。";
+    };
+    addBtn.onclick = addPlatform;
+    nameIn.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); addPlatform(); } };
+    urlIn.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); addPlatform(); } };
+
+    addRow.append(nameIn, urlIn, addBtn);
+    const addHint = document.createElement("div");
+    addHint.className = "hint";
+    addHint.textContent = "自定义平台点击后直接打开该平台首页，同时把片名复制到剪贴板，粘贴到站内搜索框即可。（内置的 5 个平台仍是直接搜片名。）";
+    fp.append(lp, picker, addRow, err, addHint);
+
+    body.append(f1, f2, fp);
 
     const h = document.createElement("div");
     h.className = "hint";

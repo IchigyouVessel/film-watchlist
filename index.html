@@ -161,6 +161,40 @@
   .note{font-size:12px;color:var(--sub);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   /* 「观看」按钮 + 平台菜单 */
+  .rating-wrap{flex:0 0 auto;align-self:center;margin-left:4px}
+  .rating{
+    min-width:34px;padding:3px 6px;border-radius:7px;border:1px solid transparent;
+    background:var(--chip);color:var(--sub);font-size:11px;font-weight:700;line-height:1;
+    font-variant-numeric:tabular-nums;cursor:pointer;
+  }
+  .rating:hover{border-color:var(--accent);color:var(--accent)}
+  .rating.unrated{background:transparent;border:1px dashed var(--line);color:var(--done);font-weight:400}
+  .rating.high{background:rgba(52,199,89,.16);color:#248a3d}
+  .rating.mid{background:rgba(255,159,10,.16);color:#a05a00}
+  .rating.low{background:rgba(142,142,147,.18);color:#6e6e73}
+  html[data-theme="dark"] .rating.high{color:#7ee787}
+  html[data-theme="dark"] .rating.mid{color:#ffcf80}
+  html[data-theme="dark"] .rating.low{color:#c7c7cc}
+  .rating-input{
+    width:54px;padding:3px 5px;border-radius:7px;border:1px solid var(--accent);
+    background:var(--bg);color:var(--text);font-size:11.5px;text-align:center;outline:none;
+    font-family:inherit;
+  }
+  .rating-input::-webkit-outer-spin-button,
+  .rating-input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+
+  .pin{
+    flex:0 0 auto;align-self:center;margin-left:4px;
+    width:24px;height:24px;padding:0;border:0;background:none;border-radius:7px;
+    color:var(--sub);font-size:14px;line-height:1;opacity:.45;
+    transition:opacity .15s,color .15s,background .15s;
+  }
+  .row:hover .pin{opacity:1}
+  .pin:hover{background:var(--chip)}
+  .pin.on{color:var(--warn);opacity:1}
+  .row.pinned{box-shadow:inset 3px 0 0 var(--warn)}
+  @media (hover:none){ .pin{opacity:.8} }
+
   .watch{
     flex:0 0 auto;align-self:center;margin-left:6px;
     padding:4px 9px;border-radius:8px;border:1px solid var(--line);
@@ -192,6 +226,17 @@
   .wm-item.custom:hover .wm-hint{color:var(--accent);opacity:1}
   .wm-empty{padding:8px 9px;font-size:12px;color:var(--sub);line-height:1.6}
 
+  .api-row{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .api-name{flex:0 0 54px;font-size:12.5px;font-weight:600;color:var(--text)}
+  .api-row input{
+    flex:1;min-width:0;padding:7px 10px;border-radius:9px;border:1px solid var(--line);
+    background:var(--bg);color:var(--text);font-size:12.5px;font-family:inherit;outline:none;
+  }
+  .api-row input:focus{border-color:var(--accent)}
+  .api-row a{font-size:12px;color:var(--accent);text-decoration:none;white-space:nowrap}
+  .api-row a:hover{text-decoration:underline}
+  .api-note{margin:0 0 10px 64px}
+
   .plat-picker{display:flex;flex-wrap:wrap;gap:8px}
   .plat-opt{
     display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:9px;
@@ -200,6 +245,11 @@
   .plat-opt:hover{border-color:var(--accent)}
   .plat-opt input{accent-color:var(--accent);width:14px;height:14px;margin:0;cursor:pointer}
   .plat-opt i{width:7px;height:7px;border-radius:50%;flex:0 0 auto}
+  .plat-edit{
+    border:0;background:none;color:var(--sub);font-size:12px;line-height:1;
+    padding:0 2px;margin-left:2px;cursor:pointer;
+  }
+  .plat-edit:hover{color:var(--accent)}
   .plat-del{
     border:0;background:none;color:var(--sub);font-size:15px;line-height:1;
     padding:0 1px;margin-left:2px;cursor:pointer;
@@ -488,11 +538,15 @@ const DEFAULT_STATE = {
   themes: [{ id: "marvel" }, { id: "bond" }],
   cur: "marvel",
   watched: {},
+  pinned: {},        // 置顶条目：不受筛选影响，始终显示
   extra: {},
-  settings: { dark: false, tmdbKey: "", platforms: null, customPlatforms: [] },   // platforms: null = 全部默认开启
+  settings: { dark: false, tmdbKey: "", platforms: null, customPlatforms: [], ratingPlatform: "douban",
+    apiKeys: { tmdb: "", omdb: "" } },   // 公开 API 的密钥，本机保存
+  ratings: {},       // 评分：{ "theme::片名|日期": { douban: 8.6, imdb: 7.8 } }
   // 界面状态：重开页面后沿用上次的筛选 / 排序 / 已看筛选
   ui: {
     filters: { v: [], s: [], dec: [], rel: [] },
+    themeUi: {},        // 每个片单各自的筛选 / 已看筛选
     sort: "date-asc",
     chip: "all",
   },
@@ -516,6 +570,17 @@ function normalize(s) {
     base.settings.platforms = base.settings.platforms.filter((x) => ids.indexOf(x) >= 0);
   }
   base.watched = base.watched || {};
+  base.pinned = base.pinned || {};
+base.ratings = (base.ratings && typeof base.ratings === "object") ? base.ratings : {};
+  const keys = base.settings.apiKeys || {};
+  base.settings.apiKeys = {
+    tmdb: typeof keys.tmdb === "string" ? keys.tmdb : "",
+    omdb: typeof keys.omdb === "string" ? keys.omdb : "",
+  };
+  // 兼容旧版单独存的 tmdbKey
+  if (!base.settings.apiKeys.tmdb && base.settings.tmdbKey) {
+    base.settings.apiKeys.tmdb = base.settings.tmdbKey;
+  }
   base.extra = base.extra || {};
 
   const ui = Object.assign({}, DEFAULT_STATE.ui, (s && s.ui) || {});
@@ -523,8 +588,11 @@ function normalize(s) {
   ["v", "s", "dec", "rel"].forEach((k) => {
     if (!Array.isArray(f[k])) f[k] = [];
   });
+  // 每个片单各自的筛选要原样带过来，否则刷新后就丢了
+  const themeUi = (ui.themeUi && typeof ui.themeUi === "object") ? ui.themeUi : {};
   base.ui = {
     filters: f,
+    themeUi: themeUi,
     sort: typeof ui.sort === "string" && ui.sort ? ui.sort : "date-asc",
     chip: ["all", "unseen", "seen"].indexOf(ui.chip) >= 0 ? ui.chip : "all",
   };
@@ -567,23 +635,34 @@ async function bootState() {
   state = normalize(readLocal() || structuredClone(DEFAULT_STATE));
 }
 
-/* 把当前界面选择写进 state，随数据一起存盘 */
+/* 把当前界面选择写进 state，随数据一起存盘。
+   筛选与「已看/未看」按片单分开存，切换片单互不影响；排序是全局偏好。 */
 let uiReady = false;
-function syncUiToState() {
-  if (!uiReady) return;            // 界面还没还原完，别拿默认值覆盖存档
-  const sortEl = $("#sort");
-  if (!sortEl) return;
-  const chipEl = document.querySelector("#chips button.on");
-  state.ui = {
+
+function currentChip() {
+  const el = document.querySelector("#chips button.on");
+  return el ? el.dataset.f : "all";
+}
+
+function saveUiFor(themeId) {
+  if (!themeId) return;
+  if (!state.ui.themeUi) state.ui.themeUi = {};
+  state.ui.themeUi[themeId] = {
     filters: {
       v: [...filters.v],
       s: [...filters.s],
       dec: [...filters.dec],
       rel: [...filters.rel],
     },
-    sort: sortEl.value,
-    chip: chipEl ? chipEl.dataset.f : "all",
+    chip: currentChip(),
   };
+}
+
+function syncUiToState() {
+  if (!uiReady) return;            // 界面还没还原完，别拿默认值覆盖存档
+  const sortEl = $("#sort");
+  if (sortEl) state.ui.sort = sortEl.value;
+  saveUiFor(state.cur);
 }
 
 function saveState(immediate) {
@@ -623,6 +702,148 @@ const $ = (sel) => document.querySelector(sel);
 const keyOf = (it) => it.t + "|" + (it.d || "");
 const wkey = (themeId, it) => themeId + "::" + keyOf(it);
 const isWatched = (themeId, it) => !!state.watched[wkey(themeId, it)];
+
+/* 固定显示：不受筛选与「已看/未看」影响，但排序不变 */
+const isPinned = (themeId, it) => !!(state.pinned && state.pinned[wkey(themeId, it)]);
+
+/* ---------- 评分 ---------- */
+const RATING_PLATFORMS = [
+  { id: "douban", name: "豆瓣" },
+  { id: "imdb", name: "IMDb" },
+  { id: "tmdb", name: "TMDB" },
+];
+
+function ratingPlatform() {
+  const id = state.settings.ratingPlatform || "douban";
+  if (id === "off") return null;
+  return RATING_PLATFORMS.filter((p) => p.id === id)[0] || RATING_PLATFORMS[0];
+}
+
+/* ---------- 公开 API 密钥 ---------- */
+const API_PROVIDERS = [
+  {
+    key: "tmdb", name: "TMDB",
+    hint: "themoviedb.org → 设置 → API → 申请免费 Key；用于「更新」同步和 TMDB 评分",
+    url: "https://www.themoviedb.org/settings/api",
+  },
+  {
+    key: "omdb", name: "OMDb",
+    hint: "omdbapi.com/apikey.aspx 免费申请；用于拉取 IMDb 评分",
+    url: "https://www.omdbapi.com/apikey.aspx",
+  },
+];
+
+function apiKey(name) {
+  const k = state.settings.apiKeys || {};
+  return (k[name] || "").trim();
+}
+
+function setApiKey(name, value) {
+  if (!state.settings.apiKeys) state.settings.apiKeys = { tmdb: "", omdb: "" };
+  state.settings.apiKeys[name] = value;
+  save();
+}
+
+
+function ratingOf(themeId, it) {
+  const p = ratingPlatform();
+  if (!p) return null;
+  const rec = state.ratings && state.ratings[wkey(themeId, it)];
+  const v = rec ? rec[p.id] : null;
+  return (typeof v === "number" && v > 0) ? v : null;
+}
+
+function setRating(themeId, it, value) {
+  const p = ratingPlatform();
+  if (!p) return;
+  if (!state.ratings) state.ratings = {};
+  const k = wkey(themeId, it);
+  const rec = Object.assign({}, state.ratings[k] || {});
+  if (value == null || isNaN(value)) delete rec[p.id];
+  else rec[p.id] = Math.max(0, Math.min(10, Math.round(value * 10) / 10));
+  if (Object.keys(rec).length) state.ratings[k] = rec;
+  else delete state.ratings[k];
+  save();
+  renderList();
+}
+/* ---------- 从公开 API 拉取评分 ---------- */
+async function fetchRatingFor(it, platformId) {
+  const year = (it.d || "").slice(0, 4);
+
+  if (platformId === "tmdb") {
+    const key = apiKey("tmdb");
+    const u = "https://api.themoviedb.org/3/search/movie?api_key=" + encodeURIComponent(key)
+      + "&language=zh-CN&query=" + encodeURIComponent(it.t) + (year ? "&year=" + year : "");
+    const r = await fetch(u);
+    if (!r.ok) throw new Error("TMDB HTTP " + r.status);
+    const j = await r.json();
+    const hit = (j.results || [])[0];
+    if (!hit || !hit.vote_average) return null;
+    return Math.round(hit.vote_average * 10) / 10;
+  }
+
+  if (platformId === "imdb") {
+    const key = apiKey("omdb");
+    const u = "https://www.omdbapi.com/?apikey=" + encodeURIComponent(key)
+      + "&t=" + encodeURIComponent(it.t) + (year ? "&y=" + year : "");
+    const r = await fetch(u);
+    if (!r.ok) throw new Error("OMDb HTTP " + r.status);
+    const j = await r.json();
+    if (j.Response !== "True" || !j.imdbRating || j.imdbRating === "N/A") return null;
+    const v = parseFloat(j.imdbRating);
+    return isNaN(v) ? null : v;
+  }
+
+  return null;
+}
+
+async function fetchRatingsForTheme(onProgress) {
+  const p = ratingPlatform();
+  if (!p) throw new Error("评分平台已关闭，先在设置里选一个。");
+  if (p.id === "douban") throw new Error("豆瓣没有公开接口，只能手动填写。想自动拉取请切到 IMDb 或 TMDB。");
+
+  const keyName = p.id === "imdb" ? "omdb" : "tmdb";
+  if (!apiKey(keyName)) throw new Error("请先在设置里填写 " + (p.id === "imdb" ? "OMDb" : "TMDB") + " API Key。");
+
+  const todo = itemsOf(state.cur).filter((it) => ratingOf(state.cur, it) == null);
+  let ok = 0, miss = 0, fail = 0;
+
+  if (!state.ratings) state.ratings = {};
+  for (let i = 0; i < todo.length; i++) {
+    const it = todo[i];
+    if (onProgress) onProgress(i + 1, todo.length, ok, miss, fail);
+    try {
+      const v = await fetchRatingFor(it, p.id);
+      if (v == null) { miss++; }
+      else {
+        const k = wkey(state.cur, it);
+        const rec = Object.assign({}, state.ratings[k] || {});
+        rec[p.id] = v;
+        state.ratings[k] = rec;
+        ok++;
+      }
+    } catch (e) { fail++; }
+    await new Promise((r) => setTimeout(r, 200));   // 轻微限速，避免被限流
+
+    if (fail >= 5 && ok === 0) {
+      throw new Error("连续失败 " + fail + " 次，已停止。请检查 API Key 或网络连接。");
+    }
+  }
+
+  save();
+  renderList();
+  return { ok: ok, miss: miss, fail: fail, total: todo.length };
+}
+
+function togglePin(themeId, it) {
+  if (!state.pinned) state.pinned = {};
+  const k = wkey(themeId, it);
+  if (state.pinned[k]) delete state.pinned[k];
+  else state.pinned[k] = 1;
+  save();
+  renderAll();
+}
+
 const todayISO = () => new Date().toISOString().slice(0, 10);
 function fmt(it) {
   if (it.ds) return it.ds;
@@ -756,7 +977,14 @@ function renderThemes() {
       li.append(del);
     }
 
-    li.onclick = () => { state.cur = th.id; save(); renderAll(); };
+li.onclick = () => {
+      if (th.id === state.cur) return;
+      saveUiFor(state.cur);          // 记住当前片单的筛选
+      state.cur = th.id;
+      applyUiState();                // 载入目标片单自己的筛选
+      save();
+      renderAll();
+    };
     li.oncontextmenu = (e) => { e.preventDefault(); openRename(th.id); };
     ul.append(li);
   });
@@ -797,7 +1025,9 @@ function clearFilters() {
 /* 把上次存下来的筛选 / 排序 / 已看筛选还原到界面上 */
 function applyUiState() {
   const ui = state.ui || DEFAULT_STATE.ui;
-  const f = ui.filters || {};
+  const perTheme = (ui.themeUi && ui.themeUi[state.cur]) || null;
+  // 没有记录过的片单从「无筛选」开始，不继承别的片单
+  const f = (perTheme && perTheme.filters) || {};
   filters = {
     v: [...(f.v || [])],
     s: [...(f.s || [])],
@@ -806,7 +1036,7 @@ function applyUiState() {
   };
   const sortEl = $("#sort");
   if (sortEl) sortEl.value = ui.sort || "date-asc";
-  const chip = ui.chip || "all";
+  const chip = (perTheme && perTheme.chip) || "all";
   document.querySelectorAll("#chips button").forEach((b) => {
     b.classList.toggle("on", b.dataset.f === chip);
   });
@@ -980,7 +1210,11 @@ function hideSuggest() {
 
 function switchSeries(id) {
   if (!state.themes.some((t) => t.id === id)) state.themes.push({ id });
-  state.cur = id;
+  if (id !== state.cur) {
+    saveUiFor(state.cur);
+    state.cur = id;
+    applyUiState();
+  }
   const q = $("#q");
   if (q) q.value = "";
   hideSuggest();
@@ -1056,17 +1290,22 @@ function currentItems() {
   const f = document.querySelector("#chips button.on").dataset.f;
   let list = itemsOf(state.cur);
 
+  // 搜索照样生效
   if (q) {
     list = list.filter((it) =>
       (it.t + " " + (it.n || "") + " " + (it.s || "") + " " + (it.v || "")).toLowerCase().includes(q)
     );
   }
-  if (f === "seen") list = list.filter((it) => isWatched(state.cur, it));
-  if (f === "unseen") list = list.filter((it) => !isWatched(state.cur, it));
+
+  // 置顶项不受「已看/未看」和参数筛选影响，始终显示
+  const keep = (it) => isPinned(state.cur, it);
+
+  if (f === "seen") list = list.filter((it) => keep(it) || isWatched(state.cur, it));
+  if (f === "unseen") list = list.filter((it) => keep(it) || !isWatched(state.cur, it));
 
   FILTER_FIELDS.forEach((fd) => {
     const want = filters[fd.key];
-    if (want && want.length) list = list.filter((it) => want.indexOf(fd.of(it)) !== -1);
+    if (want && want.length) list = list.filter((it) => keep(it) || want.indexOf(fd.of(it)) !== -1);
   });
 
   const mode = $("#sort").value;
@@ -1077,6 +1316,8 @@ function currentItems() {
   else if (mode === "unseen") {
     list.sort((a, b) => (isWatched(state.cur, a) - isWatched(state.cur, b)) || dOf(a).localeCompare(dOf(b)));
   }
+
+  // 固定的条目只是无视筛选，排序仍按所选方式，不提前
   return list;
 }
 
@@ -1170,15 +1411,73 @@ function renderList() {
       info.append(n);
     }
 
+    const pinned = isPinned(state.cur, it);
+    if (pinned) li.classList.add("pinned");
+
+    /* 评分徽章（点一下就地改） */
+    const rp = ratingPlatform();
+    let ratingWrap = null;
+    if (rp) {
+      const score = ratingOf(state.cur, it);
+      ratingWrap = document.createElement("span");
+      ratingWrap.className = "rating-wrap";
+
+      const badge = document.createElement("button");
+      let cls = "rating";
+      if (score == null) cls += " unrated";
+      else if (score >= 8) cls += " high";
+      else if (score >= 7) cls += " mid";
+      else cls += " low";
+      badge.className = cls;
+      badge.textContent = score == null ? "—" : score.toFixed(1);
+      badge.title = score == null
+        ? "点此填写" + rp.name + "评分"
+        : rp.name + " 评分，点此修改";
+      badge.onclick = (e) => {
+        e.stopPropagation();
+        const inp = document.createElement("input");
+        inp.className = "rating-input";
+        inp.type = "number";
+        inp.min = "0"; inp.max = "10"; inp.step = "0.1";
+        inp.value = score == null ? "" : String(score);
+        ratingWrap.textContent = "";
+        ratingWrap.append(inp);
+        inp.focus();
+        inp.select();
+        let done = false;
+        const commit = () => {
+          if (done) return;
+          done = true;
+          const v = parseFloat(inp.value);
+          setRating(state.cur, it, isNaN(v) ? null : v);
+        };
+        inp.onblur = commit;
+        inp.onkeydown = (ev) => {
+          ev.stopPropagation();
+          if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+          else if (ev.key === "Escape") { done = true; renderList(); }
+        };
+      };
+      ratingWrap.append(badge);
+      li.append(chk, info, ratingWrap);
+    } else {
+      li.append(chk, info);
+    }
+    const pin = document.createElement("button");
+    pin.className = "pin" + (pinned ? " on" : "");
+    pin.textContent = pinned ? "★" : "☆";
+    pin.title = pinned ? "取消固定" : "固定显示（无视筛选，但不改变排序）";
+    pin.setAttribute("aria-label", pinned ? "取消固定" : "固定显示");
+    pin.onclick = (e) => { e.stopPropagation(); togglePin(state.cur, it); };
+
+    li.append(pin);
     if (enabledPlatforms().length) {
       const watch = document.createElement("button");
       watch.className = "watch";
       watch.textContent = "观看";
       watch.title = "在视频平台搜索《" + it.t + "》";
       watch.onclick = (e) => { e.stopPropagation(); openWatchMenu(watch, it); };
-      li.append(chk, info, watch);
-    } else {
-      li.append(chk, info);
+      li.append(watch);
     }
     li.onclick = () => {
       const k = wkey(state.cur, it);
@@ -1833,9 +2132,9 @@ function openUpdate() {
     const lk = document.createElement("label");
     lk.textContent = "TMDB API Key（可留空，仅在线同步需要）";
     const ik = document.createElement("input");
-    ik.value = state.settings.tmdbKey || "";
+    ik.value = apiKey("tmdb");
     ik.placeholder = "在 themoviedb.org 免费申请";
-    ik.oninput = () => { state.settings.tmdbKey = ik.value.trim(); save(); };
+    ik.oninput = () => { state.settings.apiKeys.tmdb = ik.value.trim(); save(); };
     fk.append(lk, ik);
 
     const fc = document.createElement("div");
@@ -1868,7 +2167,7 @@ function openUpdate() {
     const say = (t) => { log.textContent = t; };
 
     bSync.onclick = async () => {
-      const key = (state.settings.tmdbKey || "").trim();
+      const key = apiKey("tmdb");
       if (!key) { say("请先填 TMDB API Key。没有 Key 的话，可以用 ② 或 ③ 导入。"); return; }
       const idRaw = ic.value.trim();
       bSync.disabled = true;
@@ -2034,6 +2333,93 @@ function openSettings() {
     bar.append(bExp, bImp, bReset);
     f2.append(l2, bar);
 
+    /* ---- 公开 API 密钥 ---- */
+    const fk = document.createElement("div");
+    fk.className = "field";
+    const lk = document.createElement("label");
+    lk.textContent = "API 密钥（只存本机，用于联网查询）";
+    API_PROVIDERS.forEach((p) => {
+      const row = document.createElement("div");
+      row.className = "api-row";
+      const nm = document.createElement("span");
+      nm.className = "api-name";
+      nm.textContent = p.name;
+      const inp = document.createElement("input");
+      inp.type = "password";
+      inp.placeholder = "粘贴 " + p.name + " API Key";
+      inp.value = apiKey(p.key);
+      inp.oninput = () => setApiKey(p.key, inp.value.trim());
+      const link = document.createElement("a");
+      link.href = p.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = "申请";
+      row.append(nm, inp, link);
+      const note = document.createElement("div");
+      note.className = "hint api-note";
+      note.textContent = p.hint;
+      fk.append(row, note);
+    });
+    const kHint = document.createElement("div");
+    kHint.className = "hint";
+    kHint.textContent = "TMDB：用于「更新」同步系列新片、以及自动拉取 TMDB 评分；OMDb：用于自动拉取 IMDb 评分。不填也能正常使用其他功能。";
+    fk.append(kHint);
+
+    /* ---- 评分平台 ---- */
+    const fr = document.createElement("div");
+    fr.className = "field";
+    const lr = document.createElement("label");
+    lr.textContent = "评分平台（决定每行显示的分数来自哪里）";
+    const ratingBar = document.createElement("div");
+    ratingBar.className = "chips";
+    const ratingChoices = [
+      { id: "douban", name: "豆瓣" },
+      { id: "imdb", name: "IMDb" },
+      { id: "tmdb", name: "TMDB" },
+      { id: "off", name: "不显示" },
+    ];
+    ratingChoices.forEach((o) => {
+      const b = document.createElement("button");
+      b.textContent = o.name;
+      if ((state.settings.ratingPlatform || "douban") === o.id) b.className = "on";
+      b.onclick = () => {
+        state.settings.ratingPlatform = o.id;
+        [...ratingBar.children].forEach((x) => x.classList.toggle("on", x === b));
+        save();
+        renderList();
+      };
+      ratingBar.append(b);
+    });
+
+    const ratingHint = document.createElement("div");
+    ratingHint.className = "hint";
+    ratingHint.id = "ratingHint";
+    ratingHint.textContent = "点每行分数徽章即可填写或修改（0–10）。各平台的分数分开保存，切换平台互不影响。";
+
+    const fetchBtn = document.createElement("button");
+    fetchBtn.className = "btn";
+    fetchBtn.textContent = "拉取评分";
+    fetchBtn.style.marginTop = "8px";
+    fetchBtn.onclick = async () => {
+      fetchBtn.disabled = true;
+      ratingHint.classList.remove("bad");
+      try {
+        const res = await fetchRatingsForTheme((i, n, ok, miss, fail) => {
+          ratingHint.textContent = "拉取中… " + i + "/" + n + "（成功 " + ok + "，无数据 " + miss + "，失败 " + fail + "）";
+        });
+        ratingHint.textContent = res.total === 0
+          ? "当前片单没有待补的评分了。"
+          : "完成：成功 " + res.ok + " 条，无数据 " + res.miss + " 条，失败 " + res.fail + " 条。";
+      } catch (e) {
+        ratingHint.classList.add("bad");
+        ratingHint.textContent = e.message;
+      } finally {
+        fetchBtn.disabled = false;
+      }
+    };
+
+    fr.append(lr, ratingBar, ratingHint, fetchBtn);
+
     /* ---- 观看平台 ---- */
     const fp = document.createElement("div");
     fp.className = "field";
@@ -2041,6 +2427,8 @@ function openSettings() {
     lp.textContent = "观看平台（勾选后会出现在每行的「观看」按钮里）";
     const picker = document.createElement("div");
     picker.className = "plat-picker";
+
+    let editingId = null;      // 正在编辑的自定义平台 id
 
     const renderPicker = () => {
       picker.textContent = "";
@@ -2067,6 +2455,18 @@ function openSettings() {
         opt.append(cb, dot, nm);
 
         if (p.custom) {
+          const ed = document.createElement("button");
+          ed.className = "plat-edit";
+          ed.textContent = "✎";
+          ed.title = "编辑这个平台";
+          ed.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const raw = customPlatforms().find((c) => c.id === p.id);
+            if (raw) startEdit(raw);   // 用原始记录，那里的 url 是字符串
+          };
+          opt.append(ed);
+
           const del = document.createElement("button");
           del.className = "plat-del";
           del.textContent = "×";
@@ -2086,7 +2486,7 @@ function openSettings() {
     };
     renderPicker();
 
-    /* 新增自定义平台 */
+    /* 新增 / 编辑自定义平台 */
     const addRow = document.createElement("div");
     addRow.className = "plat-add";
     const nameIn = document.createElement("input");
@@ -2098,10 +2498,36 @@ function openSettings() {
     const addBtn = document.createElement("button");
     addBtn.className = "btn";
     addBtn.textContent = "添加";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "btn";
+    cancelBtn.textContent = "取消";
+    cancelBtn.style.display = "none";
     const err = document.createElement("div");
     err.className = "plat-err";
 
-    const addPlatform = () => {
+    const resetForm = () => {
+      editingId = null;
+      nameIn.value = "";
+      urlIn.value = "";
+      addBtn.textContent = "添加";
+      cancelBtn.style.display = "none";
+      err.classList.remove("bad");
+      err.textContent = "";
+    };
+
+    const startEdit = (p) => {
+      editingId = p.id;
+      nameIn.value = p.name;
+      urlIn.value = p.url;
+      addBtn.textContent = "保存";
+      cancelBtn.style.display = "";
+      err.classList.remove("bad");
+      err.textContent = "正在编辑「" + p.name + "」";
+      nameIn.focus();
+      nameIn.select();
+    };
+
+    const submit = () => {
       const name = nameIn.value.trim();
       const url = urlIn.value.trim();
       const fail = (msg, el) => {
@@ -2109,35 +2535,45 @@ function openSettings() {
         err.classList.add("bad");
         if (el) el.focus();
       };
-      err.classList.remove("bad");
-      err.textContent = "";
       if (!name) return fail("请填平台名称。", nameIn);
       if (!url) return fail("请填搜索地址。", urlIn);
       if (!/^https?:\/\/[^\s]+$/i.test(url)) {
         return fail("地址必须以 http:// 或 https:// 开头。", urlIn);
       }
+
+      if (editingId) {
+        state.settings.customPlatforms = customPlatforms().map((c) =>
+          (c.id === editingId ? { id: c.id, name: name, url: url } : c));
+        save();
+        renderPicker();
+        renderList();
+        resetForm();
+        err.textContent = "已保存「" + name + "」。";
+        return;
+      }
+
       const id = "cp" + Date.now().toString(36);
-      state.settings.customPlatforms = customPlatforms().concat([{ id, name, url }]);
+      state.settings.customPlatforms = customPlatforms().concat([{ id: id, name: name, url: url }]);
       state.settings.platforms = (state.settings.platforms || PLATFORM_DEFAULT).concat([id]);
       save();
-      nameIn.value = "";
-      urlIn.value = "";
       renderPicker();
       renderList();
-      err.classList.remove("bad");
+      resetForm();
       err.textContent = "已添加「" + name + "」。";
     };
-    addBtn.onclick = addPlatform;
-    nameIn.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); addPlatform(); } };
-    urlIn.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); addPlatform(); } };
 
-    addRow.append(nameIn, urlIn, addBtn);
+    addBtn.onclick = submit;
+    cancelBtn.onclick = () => { resetForm(); renderPicker(); };
+    nameIn.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } };
+    urlIn.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } };
+
+    addRow.append(nameIn, urlIn, addBtn, cancelBtn);
     const addHint = document.createElement("div");
     addHint.className = "hint";
     addHint.textContent = "自定义平台点击后直接打开该平台首页，同时把片名复制到剪贴板，粘贴到站内搜索框即可。（内置的 5 个平台仍是直接搜片名。）";
     fp.append(lp, picker, addRow, err, addHint);
 
-    body.append(f1, f2, fp);
+    body.append(f1, fk, fr, f2, fp);
 
     const h = document.createElement("div");
     h.className = "hint";

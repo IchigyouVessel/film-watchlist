@@ -168,6 +168,11 @@
     font-variant-numeric:tabular-nums;cursor:pointer;
   }
   .rating:hover{border-color:var(--accent);color:var(--accent)}
+  .rating.api{cursor:default}
+  .rating.api::after{
+    content:"";display:inline-block;width:4px;height:4px;border-radius:50%;
+    background:currentColor;opacity:.55;margin-left:4px;vertical-align:1px;
+  }
   .rating.unrated{background:transparent;border:1px dashed var(--line);color:var(--done);font-weight:400}
   .rating.high{background:rgba(52,199,89,.16);color:#248a3d}
   .rating.mid{background:rgba(255,159,10,.16);color:#a05a00}
@@ -542,7 +547,8 @@ const DEFAULT_STATE = {
   extra: {},
   settings: { dark: false, tmdbKey: "", platforms: null, customPlatforms: [], ratingPlatform: "douban",
     apiKeys: { tmdb: "", omdb: "" } },   // 公开 API 的密钥，本机保存
-  ratings: {},       // 评分：{ "theme::片名|日期": { douban: 8.6, imdb: 7.8 } }
+  ratings: {},       // 评分：{ "theme::片名|日期": { douban: 8.6, imdb: { v: 7.8, api: 1 } } }
+  titleEn: {},       // 中文名 → 英文原名缓存：{ "theme::片名|日期": "Spider-Man" }
   // 界面状态：重开页面后沿用上次的筛选 / 排序 / 已看筛选
   ui: {
     filters: { v: [], s: [], dec: [], rel: [] },
@@ -572,6 +578,7 @@ function normalize(s) {
   base.watched = base.watched || {};
   base.pinned = base.pinned || {};
 base.ratings = (base.ratings && typeof base.ratings === "object") ? base.ratings : {};
+  base.titleEn = (base.titleEn && typeof base.titleEn === "object") ? base.titleEn : {};
   const keys = base.settings.apiKeys || {};
   base.settings.apiKeys = {
     tmdb: typeof keys.tmdb === "string" ? keys.tmdb : "",
@@ -708,9 +715,10 @@ const isPinned = (themeId, it) => !!(state.pinned && state.pinned[wkey(themeId, 
 
 /* ---------- 评分 ---------- */
 const RATING_PLATFORMS = [
-  { id: "douban", name: "豆瓣" },
-  { id: "imdb", name: "IMDb" },
-  { id: "tmdb", name: "TMDB" },
+  { id: "douban", name: "豆瓣", max: 10 },
+  { id: "imdb", name: "IMDb", max: 10 },
+  { id: "tmdb", name: "TMDB", max: 10 },
+  { id: "metacritic", name: "Metacritic", max: 100 },   // 官方是百分制
 ];
 
 function ratingPlatform() {
@@ -728,7 +736,7 @@ const API_PROVIDERS = [
   },
   {
     key: "omdb", name: "OMDb",
-    hint: "omdbapi.com/apikey.aspx 免费申请；用于拉取 IMDb 评分",
+    hint: "omdbapi.com/apikey.aspx 免费申请；用于拉取 IMDb 评分，以及 Metacritic 的 Metascore",
     url: "https://www.omdbapi.com/apikey.aspx",
   },
 ];
@@ -750,7 +758,18 @@ function ratingOf(themeId, it) {
   if (!p) return null;
   const rec = state.ratings && state.ratings[wkey(themeId, it)];
   const v = rec ? rec[p.id] : null;
-  return (typeof v === "number" && v > 0) ? v : null;
+  // 兼容两种存储：纯数字=手动录入；{v, api:1}=从接口拉取
+  const num = (v && typeof v === "object") ? v.v : v;
+  return (typeof num === "number" && num > 0) ? num : null;
+}
+
+/* 这条分数是不是从 API 拉来的（拉来的不允许改） */
+function ratingIsApi(themeId, it) {
+  const p = ratingPlatform();
+  if (!p) return false;
+  const rec = state.ratings && state.ratings[wkey(themeId, it)];
+  const v = rec ? rec[p.id] : null;
+  return !!(v && typeof v === "object" && v.api);
 }
 
 function setRating(themeId, it, value) {
@@ -760,11 +779,129 @@ function setRating(themeId, it, value) {
   const k = wkey(themeId, it);
   const rec = Object.assign({}, state.ratings[k] || {});
   if (value == null || isNaN(value)) delete rec[p.id];
-  else rec[p.id] = Math.max(0, Math.min(10, Math.round(value * 10) / 10));
+  else {
+      const max = p.max || 10;
+      const step = max >= 100 ? 1 : 10;   // 百分制取整，十分制保留一位小数
+      rec[p.id] = Math.max(0, Math.min(max, Math.round(value * step) / step));   // 手动值存成纯数字
+    }
   if (Object.keys(rec).length) state.ratings[k] = rec;
   else delete state.ratings[k];
   save();
   renderList();
+}
+/* ---------- 中文名 → 英文原名（Wikidata 搜索 API） ----------
+   只做「有把握」的匹配：同名条目里必须年份吻合，或全库只有一部影视；
+   拿不准就返回 null，让 OMDb 退回用中文名查——宁可不换，也不能换成别的片子。 */
+const WD_FILM_TYPE_IDS = ["Q11424", "Q506240", "Q5398426", "Q24856", "Q1259759"];
+let wdCoolUntil = 0;   // 撞上 429 后的冷却截止时间
+
+function englishTitleOf(themeId, it) {
+  const k = wkey(themeId, it);
+  return (state.titleEn && state.titleEn[k]) || null;
+}
+
+function yearOfItem(it) {
+  const m = (it.d || "").match(/^(\d{4})/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function yearOfEntity(e) {
+  const pids = ["P577", "P571"];   // 出版日期 / 成立时间
+  for (let i = 0; i < pids.length; i++) {
+    const claims = (e.claims && e.claims[pids[i]]) || [];
+    for (let j = 0; j < claims.length; j++) {
+      const dv = claims[j].mainsnak && claims[j].mainsnak.datavalue && claims[j].mainsnak.datavalue.value;
+      const t = dv && dv.time;
+      if (t) {
+        const m = String(t).match(/(\d{4})-/);
+        if (m) return parseInt(m[1], 10);
+      }
+    }
+  }
+  return null;
+}
+
+async function wikidataGet(url) {
+  const r = await fetch(url);
+  if (r.status === 429) {
+    wdCoolUntil = Date.now() + 60000;   // 被限流就歇一分钟，别再撞
+    throw new Error("Wikidata 限流");
+  }
+  if (!r.ok) throw new Error("Wikidata HTTP " + r.status);
+  return r.json();
+}
+
+/* 查一条片子的英文原名，成功就写进缓存 */
+async function translateTitle(themeId, it) {
+  const k = wkey(themeId, it);
+  if (state.titleEn && state.titleEn[k]) return state.titleEn[k];
+  if (Date.now() < wdCoolUntil) return null;
+  if (!it.t) return null;
+
+  const j1 = await wikidataGet("https://www.wikidata.org/w/api.php?action=wbsearchentities&search="
+    + encodeURIComponent(it.t) + "&language=zh&uselang=zh&type=item&limit=15&format=json&origin=*");
+  const ids = ((j1.search || []).map((x) => x.id)).slice(0, 15);
+  if (!ids.length) return null;
+
+  const j2 = await wikidataGet("https://www.wikidata.org/w/api.php?action=wbgetentities&ids=" + ids.join("|")
+    + "&props=labels|claims|aliases|sitelinks&languages=en|zh&sitefilter=enwiki&format=json&origin=*");
+
+  const nameOf = (e) => {
+    const lbl = e.labels && e.labels.en && e.labels.en.value;
+    if (lbl) return lbl;
+    const al = e.aliases && e.aliases.en && e.aliases.en[0] && e.aliases.en[0].value;
+    if (al) return al;
+    const sl = e.sitelinks && e.sitelinks.enwiki && e.sitelinks.enwiki.title;
+    return sl ? sl.replace(/\s*\([^()]*\)\s*$/, "") : null;
+  };
+
+  const wantYear = yearOfItem(it);
+  const exact = [];
+  const movies = [];
+
+  ids.forEach((id) => {
+    const e = j2.entities && j2.entities[id];
+    if (!e) return;
+    const types = ((e.claims && e.claims.P31) || []).map((c) =>
+      c.mainsnak && c.mainsnak.datavalue && c.mainsnak.datavalue.value && c.mainsnak.datavalue.value.id);
+    if (!types.some((tp) => WD_FILM_TYPE_IDS.indexOf(tp) >= 0)) return;   // 不是影视就跳过
+    const name = nameOf(e);
+    if (!name) return;
+    (wantYear && yearOfEntity(e) === wantYear ? exact : movies).push(name);
+  });
+
+  let pick = null;
+  if (exact.length) pick = exact[0];
+  else if (movies.length === 1) pick = movies[0];
+
+  if (pick) {
+    if (!state.titleEn) state.titleEn = {};
+    state.titleEn[k] = pick;
+  }
+  return pick;
+}
+
+/* 给整个片单预匹配；返回成功条数。失败不抛错，只放弃转换。 */
+async function prefetchEnglishTitles(themeId, onProgress) {
+  if (!state.titleEn) state.titleEn = {};
+  const items = itemsOf(themeId);
+  let done = 0, hit = 0;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    const k = wkey(themeId, it);
+    if (state.titleEn[k]) { done++; continue; }
+    if (Date.now() < wdCoolUntil) break;
+    try {
+      const en = await translateTitle(themeId, it);
+      if (en) hit++;
+    } catch (e) {
+      if (Date.now() < wdCoolUntil) break;   // 被限流，别再往下打了
+    }
+    done++;
+    if (onProgress && done % 5 === 0) onProgress(done, items.length, hit);
+    await new Promise((r) => setTimeout(r, 250));   // 温和限速
+  }
+  return hit;
 }
 /* ---------- 从公开 API 拉取评分 ---------- */
 async function fetchRatingFor(it, platformId) {
@@ -782,16 +919,29 @@ async function fetchRatingFor(it, platformId) {
     return Math.round(hit.vote_average * 10) / 10;
   }
 
-  if (platformId === "imdb") {
+  // IMDb 评分和 Metacritic 的 Metascore 都来自 OMDb 的同一个接口
+  if (platformId === "imdb" || platformId === "metacritic") {
     const key = apiKey("omdb");
+    // OMDb 只认英文名，先用 Wikidata 把中文名换成原名，失败再用原名硬查
+    const en = await translateTitle(state.cur, it);
+    const q = en || it.t;
     const u = "https://www.omdbapi.com/?apikey=" + encodeURIComponent(key)
-      + "&t=" + encodeURIComponent(it.t) + (year ? "&y=" + year : "");
+      + "&t=" + encodeURIComponent(q) + (year ? "&y=" + year : "");
     const r = await fetch(u);
     if (!r.ok) throw new Error("OMDb HTTP " + r.status);
     const j = await r.json();
-    if (j.Response !== "True" || !j.imdbRating || j.imdbRating === "N/A") return null;
-    const v = parseFloat(j.imdbRating);
-    return isNaN(v) ? null : v;
+    if (j.Response !== "True") return null;
+
+    if (platformId === "imdb") {
+      if (!j.imdbRating || j.imdbRating === "N/A") return null;
+      const v = parseFloat(j.imdbRating);
+      return isNaN(v) ? null : v;
+    }
+
+    // Metascore 是 0-100 的整数，没评分时是 "N/A"
+    if (!j.Metascore || j.Metascore === "N/A") return null;
+    const m = parseInt(j.Metascore, 10);
+    return isNaN(m) ? null : m;
   }
 
   return null;
@@ -800,10 +950,22 @@ async function fetchRatingFor(it, platformId) {
 async function fetchRatingsForTheme(onProgress) {
   const p = ratingPlatform();
   if (!p) throw new Error("评分平台已关闭，先在设置里选一个。");
-  if (p.id === "douban") throw new Error("豆瓣没有公开接口，只能手动填写。想自动拉取请切到 IMDb 或 TMDB。");
+  if (p.id === "douban") throw new Error("豆瓣没有公开接口，只能手动填写。想自动拉取请切到 IMDb / Metacritic / TMDB。");
 
-  const keyName = p.id === "imdb" ? "omdb" : "tmdb";
-  if (!apiKey(keyName)) throw new Error("请先在设置里填写 " + (p.id === "imdb" ? "OMDb" : "TMDB") + " API Key。");
+  const keyName = (p.id === "imdb" || p.id === "metacritic") ? "omdb" : "tmdb";
+  const keyLabel = keyName === "omdb" ? "OMDb" : "TMDB";
+  if (!apiKey(keyName)) throw new Error("请先在设置里填写 " + keyLabel + " API Key。");
+
+  // 只有 IMDb / Metacritic（走 OMDb）才需要英文名；TMDB 直接认中文
+  let usedEn = 0;
+  if (p.id === "imdb" || p.id === "metacritic") {
+    if (onProgress) onProgress(0, 0, 0, 0, 0, "正在用 Wikidata 匹配英文片名…");
+    try {
+      usedEn = await prefetchEnglishTitles(state.cur, (i, n, hit) => {
+        if (onProgress) onProgress(i, n, 0, 0, 0, "正在用 Wikidata 匹配英文片名… " + i + "/" + n + "（已匹配 " + hit + "）");
+      });
+    } catch (e) { /* 转换失败就按中文名查 */ }
+  }
 
   const todo = itemsOf(state.cur).filter((it) => ratingOf(state.cur, it) == null);
   let ok = 0, miss = 0, fail = 0;
@@ -818,7 +980,7 @@ async function fetchRatingsForTheme(onProgress) {
       else {
         const k = wkey(state.cur, it);
         const rec = Object.assign({}, state.ratings[k] || {});
-        rec[p.id] = v;
+        rec[p.id] = { v: v, api: 1 };   // 标记来源：接口拉的分数不允许手动改
         state.ratings[k] = rec;
         ok++;
       }
@@ -832,7 +994,7 @@ async function fetchRatingsForTheme(onProgress) {
 
   save();
   renderList();
-  return { ok: ok, miss: miss, fail: fail, total: todo.length };
+  return { ok: ok, miss: miss, fail: fail, total: todo.length, usedEn: usedEn };
 }
 
 function togglePin(themeId, it) {
@@ -922,10 +1084,13 @@ function toast(msg) {
   toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
 }
 
-/* 搜索词：片名 + 年份，区分同名不同版本 */
+/* 搜索词：只带片名本身，去掉季别（第1季 / Season 2）和年份。
+   各平台的搜索框对纯片名命中率最高，带上季别反而搜不到。 */
+const SEASON_RE = /\s*[(（]?\s*(第\s*[一二三四五六七八九十百零0-9]+\s*季|Season\s*\d+)\s*[)）]?\s*/gi;
+
 function watchQuery(it) {
-  const year = /^\d{4}/.test(it.d || "") ? it.d.slice(0, 4) : "";
-  return year ? it.t + " " + year : it.t;
+  const name = String(it.t || "").replace(SEASON_RE, " ").replace(/\s+/g, " ").trim();
+  return name || it.t;
 }
 
 function themeName(id) {
@@ -1297,11 +1462,12 @@ function currentItems() {
     );
   }
 
-  // 置顶项不受「已看/未看」和参数筛选影响，始终显示
+  // 固定的条目只无视「参数筛选」（版本/出品/年代/上映）；
+  // 「已看/未看」筛选照常生效，否则没法只看未看的那批。
   const keep = (it) => isPinned(state.cur, it);
 
-  if (f === "seen") list = list.filter((it) => keep(it) || isWatched(state.cur, it));
-  if (f === "unseen") list = list.filter((it) => keep(it) || !isWatched(state.cur, it));
+  if (f === "seen") list = list.filter((it) => isWatched(state.cur, it));
+  if (f === "unseen") list = list.filter((it) => !isWatched(state.cur, it));
 
   FILTER_FIELDS.forEach((fd) => {
     const want = filters[fd.key];
@@ -1317,7 +1483,7 @@ function currentItems() {
     list.sort((a, b) => (isWatched(state.cur, a) - isWatched(state.cur, b)) || dOf(a).localeCompare(dOf(b)));
   }
 
-  // 固定的条目只是无视筛选，排序仍按所选方式，不提前
+  // 排序仍按所选方式，固定不会把它提到最前
   return list;
 }
 
@@ -1423,22 +1589,37 @@ function renderList() {
       ratingWrap.className = "rating-wrap";
 
       const badge = document.createElement("button");
+      const scaleMax = rp.max || 10;
+      // 百分制（Metacritic）按 10 分制换算来定颜色
+      const norm = score == null ? null : score * 10 / scaleMax;
+      const fromApi = ratingIsApi(state.cur, it);
       let cls = "rating";
       if (score == null) cls += " unrated";
-      else if (score >= 8) cls += " high";
-      else if (score >= 7) cls += " mid";
+      else if (norm >= 8) cls += " high";
+      else if (norm >= 7) cls += " mid";
       else cls += " low";
+      if (fromApi) cls += " api";
       badge.className = cls;
-      badge.textContent = score == null ? "—" : score.toFixed(1);
+      badge.textContent = score == null
+        ? "—"
+        : (scaleMax >= 100 ? String(Math.round(score)) : score.toFixed(1));
       badge.title = score == null
-        ? "点此填写" + rp.name + "评分"
-        : rp.name + " 评分，点此修改";
+        ? "点此填写" + rp.name + "评分（0–" + scaleMax + "）"
+        : (fromApi
+            ? rp.name + " 评分（从接口拉取，不可修改）"
+            : rp.name + " 评分，点此修改");
       badge.onclick = (e) => {
         e.stopPropagation();
+        if (fromApi) {
+          toast("这条分数是从 " + rp.name + " 拉的，不能修改");
+          return;
+        }
         const inp = document.createElement("input");
         inp.className = "rating-input";
         inp.type = "number";
-        inp.min = "0"; inp.max = "10"; inp.step = "0.1";
+        inp.min = "0";
+        inp.max = String(scaleMax);
+        inp.step = scaleMax >= 100 ? "1" : "0.1";
         inp.value = score == null ? "" : String(score);
         ratingWrap.textContent = "";
         ratingWrap.append(inp);
@@ -1466,7 +1647,7 @@ function renderList() {
     const pin = document.createElement("button");
     pin.className = "pin" + (pinned ? " on" : "");
     pin.textContent = pinned ? "★" : "☆";
-    pin.title = pinned ? "取消固定" : "固定显示（无视筛选，但不改变排序）";
+    pin.title = pinned ? "取消固定" : "固定显示（无视参数筛选，但不改变排序；「已看/未看」筛选仍生效）";
     pin.setAttribute("aria-label", pinned ? "取消固定" : "固定显示");
     pin.onclick = (e) => { e.stopPropagation(); togglePin(state.cur, it); };
 
@@ -1544,10 +1725,10 @@ function openWatchMenu(anchor, it) {
       tip.textContent = "复制片名";
       a.append(tip);
       a.onclick = () => {
-        copyText(it.t).then((ok) => {
+        copyText(q).then((ok) => {   // 与内置平台一致：只复制片名，不带季别和年份
           toast(ok
-            ? "已复制「" + it.t + "」，粘贴到搜索框即可"
-            : "复制失败，片名：" + it.t);
+            ? "已复制「" + q + "」，粘贴到搜索框即可"
+            : "复制失败，片名：" + q);
         });
         closeWatchMenu();
       };
@@ -1662,7 +1843,7 @@ function datesOf(claims) {
 
 async function onlineSearch(q) {
   const u1 = WD_API + "?action=wbsearchentities&format=json&origin=*&language=zh&uselang=zh"
-    + "&type=item&limit=15&search=" + encodeURIComponent(q);
+    + "&type=item&limit=10&search=" + encodeURIComponent(q);
   const r1 = await fetch(u1);
   if (!r1.ok) throw new Error("HTTP " + r1.status);
   const j1 = await r1.json();
@@ -2362,7 +2543,7 @@ function openSettings() {
     });
     const kHint = document.createElement("div");
     kHint.className = "hint";
-    kHint.textContent = "TMDB：用于「更新」同步系列新片、以及自动拉取 TMDB 评分；OMDb：用于自动拉取 IMDb 评分。不填也能正常使用其他功能。";
+    kHint.textContent = "TMDB：用于「更新」同步系列新片、以及自动拉取 TMDB 评分；OMDb：用于自动拉取 IMDb 和 Metacritic 评分。不填也能正常使用其他功能。";
     fk.append(kHint);
 
     /* ---- 评分平台 ---- */
@@ -2376,6 +2557,7 @@ function openSettings() {
       { id: "douban", name: "豆瓣" },
       { id: "imdb", name: "IMDb" },
       { id: "tmdb", name: "TMDB" },
+      { id: "metacritic", name: "Metacritic" },
       { id: "off", name: "不显示" },
     ];
     ratingChoices.forEach((o) => {
@@ -2394,7 +2576,7 @@ function openSettings() {
     const ratingHint = document.createElement("div");
     ratingHint.className = "hint";
     ratingHint.id = "ratingHint";
-    ratingHint.textContent = "点每行分数徽章即可填写或修改（0–10）。各平台的分数分开保存，切换平台互不影响。";
+    ratingHint.textContent = "点每行分数徽章即可填写或修改（豆瓣/IMDb/TMDB 是 0–10 分，Metacritic 是 0–100 分）。各平台的分数分开保存，切换平台互不影响。";
 
     const fetchBtn = document.createElement("button");
     fetchBtn.className = "btn";
@@ -2404,12 +2586,12 @@ function openSettings() {
       fetchBtn.disabled = true;
       ratingHint.classList.remove("bad");
       try {
-        const res = await fetchRatingsForTheme((i, n, ok, miss, fail) => {
-          ratingHint.textContent = "拉取中… " + i + "/" + n + "（成功 " + ok + "，无数据 " + miss + "，失败 " + fail + "）";
+        const res = await fetchRatingsForTheme((i, n, ok, miss, fail, note) => {
+          ratingHint.textContent = note || ("拉取中… " + i + "/" + n + "（成功 " + ok + "，无数据 " + miss + "，失败 " + fail + "）");
         });
         ratingHint.textContent = res.total === 0
           ? "当前片单没有待补的评分了。"
-          : "完成：成功 " + res.ok + " 条，无数据 " + res.miss + " 条，失败 " + res.fail + " 条。";
+          : "完成：成功 " + res.ok + " 条，无数据 " + res.miss + " 条，失败 " + res.fail + " 条" + (res.usedEn ? "（其中 " + res.usedEn + " 条用 Wikidata 换成了英文原名）" : "") + "。";
       } catch (e) {
         ratingHint.classList.add("bad");
         ratingHint.textContent = e.message;

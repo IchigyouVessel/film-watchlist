@@ -1,14 +1,15 @@
 # 片单 · Film Watchlist（ai coding）
 
-> A local-first watchlist for film \& TV franchises. Single HTML file + a tiny
+> A local-first watchlist for film & TV franchises. Single HTML file + a tiny
 > PowerShell server, no Python / Node / build step. Windows only.
 
 给影迷用的本地片单工具：按系列（漫威、007、星球大战……）整理电影，点一下标记「已看」，
 带参数筛选、联网搜索和系列识别。**数据全部存在本机**，不上传任何服务器。
 
-!\[Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
-!\[PowerShell](https://img.shields.io/badge/runtime-PowerShell%205.1-5391FE)
-!\[No dependencies](https://img.shields.io/badge/dependencies-none-green)
+![Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-blue)
+![PowerShell](https://img.shields.io/badge/runtime-PowerShell%205.1-5391FE)
+![No dependencies](https://img.shields.io/badge/dependencies-none-green)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 ## 功能
 
@@ -77,7 +78,7 @@ data/             运行时自动生成，存放用户数据（已在 .gitignore
 ## 已知限制
 
 * **仅 Windows**：依赖 PowerShell 与批处理
-* `/api/\*` 返回 `Access-Control-Allow-Origin: \*`，用于让 `file://` 直接打开页面时
+* `/api/*` 返回 `Access-Control-Allow-Origin: *`，用于让 `file://` 直接打开页面时
 也能读写磁盘。副作用是本机任意网页（在服务运行时）也能读写这份数据。
 日常个人使用影响很小；若要更严格，可以改为只允许同源访问（此时
 `file://` 模式只能退化为浏览器本地存储）
@@ -86,7 +87,7 @@ data/             运行时自动生成，存放用户数据（已在 .gitignore
 
 ## 二次开发
 
-片库数据内嵌在 `index.html` 的 `SERIES\_LIB` / `MARVEL\_ITEMS` 两个常量里，
+片库数据内嵌在 `index.html` 的 `SERIES_LIB` / `MARVEL_ITEMS` 两个常量里，
 直接编辑即可。接口很简单：
 
 |方法|路径|说明|
@@ -97,6 +98,7 @@ data/             运行时自动生成，存放用户数据（已在 .gitignore
 
 ## License
 
-尚未指定。若要允许他人自由使用，建议添加 MIT License；
-若仅自己使用，保持现状即可。
+本项目基于 [MIT License](LICENSE) 发布，Copyright (c) 2026 IchigyouVessel。
 
+你可以自由使用、修改、分发，包括商业用途，只需在分发时保留原始的版权声明与许可声明。
+软件按「现状」提供，不附带任何担保。
